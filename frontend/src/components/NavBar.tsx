@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useAuth } from "../state/auth";
 import { Modal } from "./Modal";
+import { faviconDataUrl } from "../lib/favicon";
 
 function initialsFromName(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -33,7 +34,7 @@ export function NavBar() {
     <div className="nav">
       <div className="navInner">
         <div className="navBrand" style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <img src="/favicon.svg" alt="Fix n Go" style={{ width: 28, height: 28 }} />
+          <img src={faviconDataUrl} alt="Fix n Go" style={{ width: 28, height: 28 }} />
           Fix n Go Garage
         </div>
         <NavItem to="/" label="Home" />
