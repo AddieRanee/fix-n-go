@@ -34,7 +34,7 @@ Frontend:
 2. Set `VITE_API_URL` (default backend is `http://localhost:4000`)
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (publishable/anon key)
 
-Optional (frontend → Supabase directly):
+Optional (frontend -> Supabase directly):
 
 - Required for email/password login + register (Supabase Auth).
 - Use the anon/publishable key only. Never expose the service role key in the frontend.
