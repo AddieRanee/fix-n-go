@@ -31,7 +31,7 @@ Backend:
 Frontend:
 
 1. Copy `frontend/.env.example` to `frontend/.env`
-2. Set `VITE_API_URL` (default backend is `http://localhost:4000`)
+2. Set `VITE_API_URL` only for local development or when you host the API on a separate production domain. Do not leave it pointing at `http://localhost:4000` in a deployed build.
 3. Set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` (publishable/anon key)
 
 Optional (frontend -> Supabase directly):
@@ -86,6 +86,6 @@ This repo is set up for a single Vercel project that serves the React app and th
 
 Notes:
 
-- The frontend now calls the API on the same domain by default in production, so you do not need to set `VITE_API_URL` for Vercel.
+- The frontend now calls the API on the same domain by default in production. If `VITE_API_URL` is set to a localhost address, the app will ignore it in production and fall back to the deployed domain.
 - Keep `SUPABASE_SERVICE_ROLE_KEY` server-side only.
 - After deploy, update your Supabase Auth redirect URLs to include your Vercel domain.

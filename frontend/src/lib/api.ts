@@ -1,8 +1,21 @@
 import axios from "axios";
 
+function isLocalhostUrl(value: string) {
+  try {
+    const url = new URL(value, window.location.origin);
+    return ["localhost", "127.0.0.1", "::1"].includes(url.hostname);
+  } catch {
+    return false;
+  }
+}
+
+const configuredApiUrl = import.meta.env.VITE_API_URL?.trim();
 const baseURL =
-  import.meta.env.VITE_API_URL ||
-  (import.meta.env.DEV ? "http://localhost:4000" : window.location.origin);
+  import.meta.env.DEV
+    ? configuredApiUrl || "http://localhost:4000"
+    : configuredApiUrl && !isLocalhostUrl(configuredApiUrl)
+      ? configuredApiUrl
+      : window.location.origin;
 
 export const api = axios.create({
   baseURL: `${baseURL.replace(/\/$/, "")}/api`
