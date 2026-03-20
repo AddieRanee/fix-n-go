@@ -3,7 +3,30 @@ import { Navigate } from "react-router-dom";
 import { useAuth, type UserRole } from "../state/auth";
 
 export function RequireAuth(props: { children: React.ReactNode; role?: UserRole }) {
-  const { token, user, initializing, authError, refreshUser, logout } = useAuth();
+  const {
+    token,
+    user,
+    initializing,
+    authError,
+    refreshUser,
+    logout,
+    configured,
+    configError
+  } = useAuth();
+  if (!configured) {
+    return (
+      <div className="container" style={{ paddingTop: 24 }}>
+        <div className="card" style={{ width: "min(680px, 100%)", margin: "0 auto" }}>
+          <div className="cardHeader">
+            <h2 className="title">Configuration missing</h2>
+            <p className="muted" style={{ marginTop: 8 }}>
+              {configError}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
   if (initializing) return <div className="container">Loading...</div>;
   if (!token) return <Navigate to="/login" replace />;
   if (!user) {

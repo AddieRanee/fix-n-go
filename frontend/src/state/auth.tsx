@@ -124,7 +124,10 @@ export function AuthProvider(props: { children: React.ReactNode }) {
   }, [token]);
 
   useEffect(() => {
-    if (!supabase) return;
+    if (!supabase) {
+      setInitializing(false);
+      return;
+    }
     let cancelled = false;
 
     (async () => {
