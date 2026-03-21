@@ -59,7 +59,6 @@ export function salesRouter(ctx: Ctx) {
   router.get("/receipts", async (req, res) => {
     const month = typeof req.query.month === 'string' ? req.query.month : null;
     try {
-    try {
       // Get all receipts with their lines
       let receiptsQuery = ctx.supabase
         .from("receipts")
@@ -119,11 +118,12 @@ export function salesRouter(ctx: Ctx) {
           return sum + (price * qty);
         }, 0);
 
-        return {
+      return {
           id: receipt.id,
           rec_no: receipt.rec_no,
           number_plate: receipt.number_plate,
           staff_name: receipt.staff_name,
+          payment_status: receipt.payment_status || "paid",
           created_at: receipt.created_at,
           total
         };
