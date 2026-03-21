@@ -53,8 +53,8 @@ export function SparePartsPage() {
   const [addMode, setAddMode] = useState<"create" | "stock">("create");
   const [form, setForm] = useState<Form>(emptyForm);
   const [stockTargetId, setStockTargetId] = useState<string | null>(null);
-  const [rowAddQty, setRowAddQty] = useState<Record<string, string>>({});
-  const [stockEditRowId, setStockEditRowId] = useState<string | null>(null);
+// const [rowAddQty, setRowAddQty] = useState<Record<string, string>>({});
+// const [stockEditRowId, setStockEditRowId] = useState<string | null>(null);
   const [rowDateIssued, setRowDateIssued] = useState<Record<string, string>>({});
   const [rowPaymentStatus, setRowPaymentStatus] = useState<
     Record<string, "paid" | "unpaid">
@@ -118,10 +118,10 @@ export function SparePartsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const lowStockCount = useMemo(
-    () => rows.filter((r) => r.stock_quantity < LOW_STOCK_THRESHOLD).length,
-    [rows]
-  );
+// const lowStockCount = useMemo(
+  //   () => rows.filter((r) => r.stock_quantity < LOW_STOCK_THRESHOLD).length,
+  //   [rows]
+  // );
 
   return (
     <div className="container">
@@ -132,9 +132,7 @@ export function SparePartsPage() {
             <span className="muted">
               {loading ? "Loading..." : `${rows.length} items`}
             </span>
-            {lowStockCount ? (
-              <span className="badge badgeWarn">LOW STOCK: {lowStockCount}</span>
-            ) : null}
+
             <div className="spacer" />
 
             <div style={{ minWidth: 260 }}>
@@ -200,7 +198,7 @@ export function SparePartsPage() {
                   <th>Company</th>
                   <th>Date Issued</th>
                   <th>Price</th>
-                  <th>Stock Quantity</th>
+<th>Quantity</th>
                   <th>Payment</th>
                   <th>Last Updated</th>
                   <th>Actions</th>
@@ -208,7 +206,7 @@ export function SparePartsPage() {
               </thead>
               <tbody>
                 {rows.map((r) => {
-                  const low = r.stock_quantity < LOW_STOCK_THRESHOLD;
+// const low = r.stock_quantity < LOW_STOCK_THRESHOLD;
                   const qtyText = rowAddQty[r.id] ?? "1";
                   const dateIssuedValue =
                     rowDateIssued[r.id] ?? r.date_issued ?? "";
@@ -255,68 +253,10 @@ export function SparePartsPage() {
                       <td>
                         <span>
                           {r.stock_quantity}{" "}
-                          {low ? <span className="badge badgeWarn">LOW</span> : null}
+
                         </span>
-                        {stockEditRowId === r.id ? (
-                          <input
-                            className="input"
-                            type="number"
-                            min={1}
-                            step={1}
-                            value={qtyText}
-                            onChange={(e) =>
-                              setRowAddQty((m) => ({ ...m, [r.id]: e.target.value }))
-                            }
-                            onFocus={(e) => e.currentTarget.select()}
-                            onWheel={(e) =>
-                              (e.currentTarget as HTMLInputElement).blur()
-                            }
-                            onKeyDown={(e) => {
-                              if (e.key === "Escape") setStockEditRowId(null);
-                              if (e.key !== "Enter") return;
-                              (e.currentTarget as HTMLInputElement).blur();
-                            }}
-                            style={{ width: 96, marginLeft: 10 }}
-                            aria-label={`Add stock quantity for ${displayName(r)}`}
-                            autoFocus
-                          />
-                        ) : null}
-                        <button
-                          className="iconButtonSm"
-                          type="button"
-                          title="Update stock quantity"
-                          aria-label={`Update stock quantity for ${displayName(r)}`}
-                          onClick={async () => {
-                            if (stockEditRowId !== r.id) {
-                              setStockEditRowId(r.id);
-                              setRowAddQty((m) => ({ ...m, [r.id]: m[r.id] ?? "1" }));
-                              return;
-                            }
-                            const qty = Math.trunc(Number(qtyText));
-                            if (!Number.isFinite(qty) || qty <= 0) return;
-                            try {
-                              const supabase = requireSupabase();
-                              const { error } = await supabase.rpc(
-                                "add_spare_part_stock_by_id",
-                                {
-                                  p_id: r.id,
-                                  p_add_quantity: qty,
-                                  p_price: r.price,
-                                  p_company: null
-                                }
-                              );
-                              if (error) throw error;
-                              setRowAddQty((m) => ({ ...m, [r.id]: "1" }));
-                              setStockEditRowId(null);
-                              await load();
-                            } catch (err: any) {
-                              alert(getApiErrorMessage(err, "Update stock failed"));
-                            }
-                          }}
-                          style={{ marginLeft: stockEditRowId === r.id ? 8 : 10 }}
-                        >
-                          +
-                        </button>
+
+
                       </td>
                       <td>
                         <select
