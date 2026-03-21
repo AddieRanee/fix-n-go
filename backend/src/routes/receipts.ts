@@ -17,6 +17,7 @@ const ReceiptLineSchema = z.object({
 const CreateReceiptSchema = z.object({
   number_plate: z.string().min(1),
   staff_name: z.string().optional(),
+  payment_status: z.enum(["paid", "unpaid", "other"]).optional(),
   lines: z.array(ReceiptLineSchema).min(1)
 });
 
@@ -27,6 +28,7 @@ const ReceiptLineUpdateSchema = ReceiptLineSchema.extend({
 const UpdateReceiptSchema = z.object({
   number_plate: z.string().min(1),
   staff_name: z.string().optional(),
+  payment_status: z.enum(["paid", "unpaid", "other"]).optional(),
   lines: z.array(ReceiptLineUpdateSchema).min(1)
 });
 
@@ -61,7 +63,7 @@ export function receiptsRouter(ctx: Ctx) {
 
     let q = ctx.supabase
       .from("receipts")
-      .select("id,rec_no,number_plate,staff_name,created_at")
+      .select("id,rec_no,number_plate,staff_name,payment_status,created_at")
       .order("created_at", { ascending: false });
 
     if (recNo) {
@@ -83,6 +85,7 @@ export function receiptsRouter(ctx: Ctx) {
         .insert({
           number_plate: body.number_plate.trim(),
           staff_name: body.staff_name ?? "",
+          payment_status: (body.payment_status as string) ?? 'paid',
           created_by_id: req.user?.id ?? null
         })
         .select("id")
@@ -362,7 +365,8 @@ export function receiptsRouter(ctx: Ctx) {
         .from("receipts")
         .update({
           number_plate: body.number_plate,
-          staff_name: body.staff_name ?? ""
+          staff_name: body.staff_name ?? "",
+          payment_status: (body.payment_status as string) ?? 'paid'
         })
         .eq("id", id);
       if (uErr) return res.status(400).json({ error: uErr.message });
@@ -396,67 +400,151 @@ export function receiptsRouter(ctx: Ctx) {
     }
   });
 
-  router.delete("/:id", requireAuth, async (req, res) => {
-    const { id } = req.params;
-    try {
-      const { data: lines, error: linesErr } = await ctx.supabase
-        .from("receipt_lines")
-        .select("line_type,inventory_item_code,spare_part_id,quantity")
-        .eq("receipt_id", id);
-      if (linesErr) return res.status(400).json({ error: linesErr.message });
+router.delete("/bulk", requireAuth, async (req, res) => {
+  const { ids, keep_stock } = req.body;
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "ids array required" });
+  }
+  
+  try {
+    let restoredCount = 0;
+    
+    if (!keep_stock) {
+      for (const receiptId of ids) {
+        const { data: lines, error: linesErr } = await ctx.supabase
+          .from("receipt_lines")
+          .select("line_type,inventory_item_code,spare_part_id,quantity")
+          .eq("receipt_id", receiptId);
+        if (linesErr) continue;
 
-      for (const line of lines ?? []) {
-        const qty = Number((line as any).quantity ?? 1);
-        if ((line as any).line_type === "inventory" && (line as any).inventory_item_code) {
-          const itemCode = String((line as any).inventory_item_code).trim();
-          if (!itemCode) continue;
+        for (const line of lines ?? []) {
+          const qty = Number((line as any).quantity ?? 1);
+          if ((line as any).line_type === "inventory" && (line as any).inventory_item_code) {
+            const itemCode = String((line as any).inventory_item_code).trim();
+            if (!itemCode) continue;
 
-          const { data: inv, error: invErr } = await ctx.supabase
-            .from("inventory")
-            .select("stock_quantity")
-            .eq("item_code", itemCode)
-            .single();
-          if (invErr) return res.status(400).json({ error: invErr.message });
+            const { data: inv, error: invErr } = await ctx.supabase
+              .from("inventory")
+              .select("stock_quantity")
+              .eq("item_code", itemCode)
+              .single();
+            if (invErr) continue;
 
-          const nextQty = Number(inv?.stock_quantity ?? 0) + qty;
-          const { error: updErr } = await ctx.supabase
-            .from("inventory")
-            .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
-            .eq("item_code", itemCode);
-          if (updErr) return res.status(400).json({ error: updErr.message });
-        }
+            const nextQty = Number(inv?.stock_quantity ?? 0) + qty;
+            await ctx.supabase
+              .from("inventory")
+              .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
+              .eq("item_code", itemCode);
+            restoredCount++;
+          }
 
-        if ((line as any).line_type === "spare_part" && (line as any).spare_part_id) {
-          const sparePartId = String((line as any).spare_part_id).trim();
-          if (!sparePartId) continue;
+          if ((line as any).line_type === "spare_part" && (line as any).spare_part_id) {
+            const sparePartId = String((line as any).spare_part_id).trim();
+            if (!sparePartId) continue;
 
-          const { data: sp, error: spErr } = await ctx.supabase
-            .from("spare_parts")
-            .select("stock_quantity")
-            .eq("id", sparePartId)
-            .single();
-          if (spErr) return res.status(400).json({ error: spErr.message });
+            const { data: sp, error: spErr } = await ctx.supabase
+              .from("spare_parts")
+              .select("stock_quantity")
+              .eq("id", sparePartId)
+              .single();
+            if (spErr) continue;
 
-          const nextQty = Number(sp?.stock_quantity ?? 0) + qty;
-          const { error: updErr } = await ctx.supabase
-            .from("spare_parts")
-            .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
-            .eq("id", sparePartId);
-          if (updErr) return res.status(400).json({ error: updErr.message });
+            const nextQty = Number(sp?.stock_quantity ?? 0) + qty;
+            await ctx.supabase
+              .from("spare_parts")
+              .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
+              .eq("id", sparePartId);
+            restoredCount++;
+          }
         }
       }
-
-      const { error: delLinesErr } = await ctx.supabase.from("receipt_lines").delete().eq("receipt_id", id);
-      if (delLinesErr) return res.status(400).json({ error: delLinesErr.message });
-
-      const { error: delErr } = await ctx.supabase.from("receipts").delete().eq("id", id);
-      if (delErr) return res.status(400).json({ error: delErr.message });
-
-      res.status(204).send();
-    } catch (err: any) {
-      return res.status(500).json({ error: err?.message || "Failed to delete receipt" });
     }
-  });
+
+    const { error: delErr } = await ctx.supabase
+      .from("receipts")
+      .delete()
+      .in("id", ids);
+
+    if (delErr) return res.status(400).json({ error: delErr.message });
+
+    res.json({ deleted: ids.length, stockRestored: keep_stock ? 0 : restoredCount });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Failed to bulk delete receipts" });
+  }
+});
+
+router.delete("/:id", requireAuth, async (req, res) => {
+  const { id } = req.params;
+  const keep_stock = req.query.keep_stock === 'true';
+  
+  if (keep_stock) {
+    const { error: delErr } = await ctx.supabase
+      .from("receipts")
+      .delete()
+      .eq("id", id);
+    if (delErr) return res.status(400).json({ error: delErr.message });
+    return res.status(204).send();
+  }
+  
+  try {
+    const { data: lines, error: linesErr } = await ctx.supabase
+      .from("receipt_lines")
+      .select("line_type,inventory_item_code,spare_part_id,quantity")
+      .eq("receipt_id", id);
+    if (linesErr) return res.status(400).json({ error: linesErr.message });
+
+    for (const line of lines ?? []) {
+      const qty = Number((line as any).quantity ?? 1);
+      if ((line as any).line_type === "inventory" && (line as any).inventory_item_code) {
+        const itemCode = String((line as any).inventory_item_code).trim();
+        if (!itemCode) continue;
+
+        const { data: inv, error: invErr } = await ctx.supabase
+          .from("inventory")
+          .select("stock_quantity")
+          .eq("item_code", itemCode)
+          .single();
+        if (invErr) return res.status(400).json({ error: invErr.message });
+
+        const nextQty = Number(inv?.stock_quantity ?? 0) + qty;
+        const { error: updErr } = await ctx.supabase
+          .from("inventory")
+          .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
+          .eq("item_code", itemCode);
+        if (updErr) return res.status(400).json({ error: updErr.message });
+      }
+
+      if ((line as any).line_type === "spare_part" && (line as any).spare_part_id) {
+        const sparePartId = String((line as any).spare_part_id).trim();
+        if (!sparePartId) continue;
+
+        const { data: sp, error: spErr } = await ctx.supabase
+          .from("spare_parts")
+          .select("stock_quantity")
+          .eq("id", sparePartId)
+          .single();
+        if (spErr) return res.status(400).json({ error: spErr.message });
+
+        const nextQty = Number(sp?.stock_quantity ?? 0) + qty;
+        const { error: updErr } = await ctx.supabase
+          .from("spare_parts")
+          .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
+          .eq("id", sparePartId);
+        if (updErr) return res.status(400).json({ error: updErr.message });
+      }
+    }
+
+    const { error: delLinesErr } = await ctx.supabase.from("receipt_lines").delete().eq("receipt_id", id);
+    if (delLinesErr) return res.status(400).json({ error: delLinesErr.message });
+
+    const { error: delErr } = await ctx.supabase.from("receipts").delete().eq("id", id);
+    if (delErr) return res.status(400).json({ error: delErr.message });
+
+    res.status(204).send();
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "Failed to delete receipt" });
+  }
+});
 
   return router;
 }

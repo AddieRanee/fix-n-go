@@ -3,7 +3,7 @@ import { useAuth } from "../state/auth";
 import { Modal } from "../components/Modal";
 import { formatMYR } from "../lib/money";
 import { requireSupabase } from "../lib/supabase";
-import { LOW_STOCK_THRESHOLD } from "../constants/stock";
+// import { LOW_STOCK_THRESHOLD } from "../constants/stock"; // Per-item now
 
 type InventoryItem = {
   id: string;
@@ -11,19 +11,25 @@ type InventoryItem = {
   item_name: string;
   category: string;
   stock_quantity: number;
-  price: number;
+  original_price: number;
+  selling_price: number;
+  low_stock_threshold: number;
   date_issued: string | null;
   last_updated: string;
+  price: number; // alias for selling_price
 };
 
-type InventoryForm = Omit<InventoryItem, "id" | "last_updated">;
+type InventoryForm = Omit<InventoryItem, "id" | "last_updated" | "price"> & { price: number };
 
 const emptyForm: InventoryForm = {
   item_code: "",
   item_name: "",
   category: "",
   stock_quantity: 0,
+  original_price: 0,
+  selling_price: 0,
   price: 0,
+  low_stock_threshold: 5,
   date_issued: ""
 };
 
@@ -49,7 +55,18 @@ export function InventoryPage() {
       const supabase = requireSupabase();
       let query = supabase
         .from("inventory")
-        .select("id,item_code,item_name,category,stock_quantity,price,date_issued,last_updated")
+        .select(`
+          id,
+          item_code,
+          item_name,
+          category,
+          stock_quantity,
+          original_price,
+          selling_price,
+          low_stock_threshold,
+          date_issued,
+          last_updated
+        `)
         .order("created_at", { ascending: false });
       const searchTerm = search.trim();
       if (searchTerm) {
@@ -59,7 +76,7 @@ export function InventoryPage() {
       }
       const { data, error } = await query;
       if (error) throw error;
-      setItems(data ?? []);
+      setItems((data ?? []) as InventoryItem[]);
     } catch (err: any) {
       setError(err?.message ?? "Failed to load inventory");
     } finally {
@@ -83,7 +100,7 @@ export function InventoryPage() {
   }, [search]);
 
   const lowStockCount = useMemo(
-    () => items.filter((i) => i.stock_quantity < LOW_STOCK_THRESHOLD).length,
+    () => items.filter((i) => i.stock_quantity < i.low_stock_threshold).length,
     [items]
   );
 
@@ -148,7 +165,8 @@ export function InventoryPage() {
                   <th>Item Name</th>
                   <th>Category</th>
                   <th>Date Issued</th>
-                  <th>Price</th>
+<th>OP/SP</th>
+<th>Low Stock</th>
                   <th>Stock Quantity</th>
                   <th>Last Updated</th>
                   {canEdit ? <th>Actions</th> : null}
@@ -156,7 +174,7 @@ export function InventoryPage() {
               </thead>
               <tbody>
                 {items.map((item) => {
-                  const low = item.stock_quantity < LOW_STOCK_THRESHOLD;
+  const low = item.stock_quantity < item.low_stock_threshold;
                   const qtyText = rowAddQty[item.id] ?? "1";
                   const dateIssuedValue =
                     rowDateIssued[item.id] ?? item.date_issued ?? "";
@@ -196,7 +214,8 @@ export function InventoryPage() {
                           aria-label={`Date issued for ${item.item_code}`}
                         />
                       </td>
-                      <td>{formatMYR(item.price)}</td>
+<td>{formatMYR(item.original_price)}/{formatMYR(item.selling_price)}</td>
+<td>{item.low_stock_threshold}</td>
                       <td>
                         <span>
                           {item.stock_quantity}{" "}
@@ -247,21 +266,21 @@ export function InventoryPage() {
                             if (!Number.isFinite(qty) || qty <= 0) return;
                             try {
                               const supabase = requireSupabase();
-                              const { data: current, error: readErr } = await supabase
-                                .from("inventory")
-                                .select("stock_quantity")
-                                .eq("item_code", item.item_code)
-                                .single();
-                              if (readErr) throw readErr;
-                              const nextQty = Number(current?.stock_quantity ?? 0) + qty;
-                              const { error } = await supabase
-                                .from("inventory")
-                                .update({
-                                  stock_quantity: nextQty,
-                                  price: item.price,
-                                  last_updated: new Date().toISOString()
-                                })
-                                .eq("item_code", item.item_code);
+                                const { data: current, error: readErr } = await supabase
+                                  .from("inventory")
+                                  .select("stock_quantity")
+                                  .eq("item_code", item.item_code)
+                                  .single();
+                                if (readErr) throw readErr;
+                                const nextQty = Number(current?.stock_quantity ?? 0) + qty;
+                                const { error } = await supabase
+                                  .from("inventory")
+                                  .update({
+                                    stock_quantity: nextQty,
+                                    selling_price: item.selling_price,
+                                    last_updated: new Date().toISOString()
+                                  })
+                                  .eq("item_code", item.item_code);
                               if (error) throw error;
                               setRowAddQty((m) => ({ ...m, [item.id]: "1" }));
                               setStockEditRowId(null);
@@ -316,7 +335,10 @@ export function InventoryPage() {
                                   item_name: item.item_name,
                                   category: item.category,
                                   stock_quantity: item.stock_quantity,
-                                  price: item.price,
+                                  original_price: item.original_price,
+                                  selling_price: item.selling_price,
+                                  price: item.selling_price,
+                                  low_stock_threshold: item.low_stock_threshold,
                                   date_issued: item.date_issued ?? ""
                                 });
                                 setModalOpen(true);
@@ -375,21 +397,23 @@ export function InventoryPage() {
             e.preventDefault();
             try {
               const supabase = requireSupabase();
-              if (editing) {
-                const { error } = await supabase
-                  .from("inventory")
-                  .update({
-                    item_code: form.item_code,
-                    item_name: form.item_name,
-                    category: form.category,
-                    stock_quantity: form.stock_quantity,
-                    price: form.price,
-                    date_issued: form.date_issued || null,
-                    last_updated: new Date().toISOString()
-                  })
-                  .eq("id", editing.id);
-                if (error) throw error;
-              } else if (addMode === "create") {
+                if (editing) {
+                  const { error } = await supabase
+                    .from("inventory")
+                    .update({
+                      item_code: form.item_code,
+                      item_name: form.item_name,
+                      category: form.category,
+                      stock_quantity: form.stock_quantity,
+                      original_price: form.original_price,
+                      selling_price: form.selling_price,
+                      low_stock_threshold: form.low_stock_threshold,
+                      date_issued: form.date_issued || null,
+                      last_updated: new Date().toISOString()
+                    })
+                    .eq("id", editing.id);
+                  if (error) throw error;
+                } else if (addMode === "create") {
                 const nextCode = form.item_code.trim();
                 const existing = items.find(
                   (i) => i.item_code.trim().toLowerCase() === nextCode.toLowerCase()
@@ -410,7 +434,7 @@ export function InventoryPage() {
                     .from("inventory")
                     .update({
                       stock_quantity: nextQty,
-                      price: form.price,
+                      selling_price: form.selling_price,
                       last_updated: new Date().toISOString()
                     })
                     .eq("item_code", existing.item_code);
@@ -421,7 +445,9 @@ export function InventoryPage() {
                     item_name: form.item_name,
                     category: form.category,
                     stock_quantity: form.stock_quantity,
-                    price: form.price,
+                    original_price: form.original_price,
+                    selling_price: form.selling_price,
+                    low_stock_threshold: form.low_stock_threshold,
                     date_issued: form.date_issued || null,
                     last_updated: new Date().toISOString()
                   });
@@ -439,7 +465,7 @@ export function InventoryPage() {
                   .from("inventory")
                   .update({
                     stock_quantity: nextQty,
-                    price: form.price,
+                    selling_price: form.selling_price,
                     last_updated: new Date().toISOString()
                   })
                   .eq("item_code", form.item_code);
@@ -556,20 +582,47 @@ export function InventoryPage() {
               onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
             />
 
-            <div className="formLabel">Price</div>
+            <div className="formLabel">Original Price (OP - internal)</div>
             <input
               className="input"
-              placeholder="Price"
+              placeholder="Original Price"
               type="number"
               min={0}
               step="0.01"
-              value={form.price}
+              value={form.original_price}
               onChange={(e) =>
-                setForm((f) => ({ ...f, price: Number(e.target.value) }))
+                setForm((f) => ({ ...f, original_price: Number(e.target.value) }))
               }
               onFocus={(e) => {
                 if (Number(e.currentTarget.value) === 0) e.currentTarget.select();
               }}
+              onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+            />
+            <div className="formLabel">Selling Price (SP - shown)</div>
+            <input
+              className="input"
+              placeholder="Selling Price"
+              type="number"
+              min={0}
+              step="0.01"
+              value={form.selling_price}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, selling_price: Number(e.target.value) }))
+              }
+              onFocus={(e) => {
+                if (Number(e.currentTarget.value) === 0) e.currentTarget.select();
+              }}
+              onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
+            />
+            <div className="formLabel">Low Stock Threshold</div>
+            <input
+              className="input"
+              type="number"
+              min={0}
+              value={form.low_stock_threshold}
+              onChange={(e) =>
+                setForm((f) => ({ ...f, low_stock_threshold: Number(e.target.value) }))
+              }
               onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
             />
             <button className="button" type="submit">

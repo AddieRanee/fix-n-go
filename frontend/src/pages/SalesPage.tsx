@@ -4,10 +4,10 @@ import { requireSupabase } from "../lib/supabase";
 
 interface Receipt {
   id: string;
-  job_id: string;
   rec_no: number;
   number_plate: string;
   staff_name: string;
+  payment_status: "paid" | "unpaid" | "other";
   created_at: string;
   total: number;
 }
@@ -31,7 +31,7 @@ export function SalesPage() {
         supabase.from("receipt_lines").select("unit_price, quantity, receipt_id"),
         supabase
           .from("receipts")
-          .select("id,rec_no,number_plate,staff_name,created_at")
+          .select("id,rec_no,number_plate,staff_name,payment_status,created_at")
           .order("created_at", { ascending: false })
       ]);
       if (linesRes.error) throw linesRes.error;
@@ -60,7 +60,7 @@ export function SalesPage() {
           const qty = line.quantity || 0;
           return sum + price * qty;
         }, 0);
-        return { ...receipt, total: rTotal };
+        return { ...receipt, total: rTotal, payment_status: receipt.payment_status ?? "paid" };
       });
       setReceipts(receiptsWithTotals);
     } catch (err: any) {
@@ -132,6 +132,30 @@ export function SalesPage() {
                   </tbody>
                 </table>
               )}
+              <div style={{ marginTop: 30 }}>
+                <h3 style={{ marginBottom: 20 }}>Payment Status Summary</h3>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
+                  {["paid", "unpaid", "other"].map((status) => {
+                    const statusReceipts = receipts.filter(r => r.payment_status === status);
+                    const statusTotal = statusReceipts.reduce((sum, r) => sum + r.total, 0);
+                    const statusCount = statusReceipts.length;
+                    const color = status === "paid" ? "#10b981" : status === "unpaid" ? "#f59e0b" : "#6b7280";
+                    return (
+                      <div key={status} className="card" style={{ padding: 20 }}>
+                        <div style={{ fontSize: 28, fontWeight: 700, color, marginBottom: 8 }}>
+                          {formatMYR(statusTotal)}
+                        </div>
+                        <div style={{ fontSize: 14, color, marginBottom: 4 }}>
+                          {statusCount} {status.charAt(0).toUpperCase() + status.slice(1)} receipt{statusCount !== 1 ? 's' : ''}
+                        </div>
+                        <div className="muted" style={{ fontSize: 12 }}>
+                          {status === "paid" ? "💰 Collected" : status === "unpaid" ? "⚠️ Pending" : "📝 Other"}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
             </>
           )}
         </div>

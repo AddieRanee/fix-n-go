@@ -94,6 +94,7 @@ export function UseInventoryPage() {
   const [jobId, setJobId] = useState(() => localStorage.getItem("receiptForm_jobId") || "J");
   const [numberPlate, setNumberPlate] = useState(() => localStorage.getItem("receiptForm_numberPlate") || "");
   const [staffName, setStaffName] = useState(() => localStorage.getItem("receiptForm_staffName") || "");
+  const [paymentStatus, setPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
 
   const [lines, setLines] = useState<ReceiptLine[]>(() => {
     const savedLines = localStorage.getItem("receiptForm_lines");
@@ -122,6 +123,10 @@ export function UseInventoryPage() {
   useEffect(() => {
     localStorage.setItem("receiptForm_staffName", staffName);
   }, [staffName]);
+
+  useEffect(() => {
+    localStorage.setItem("receiptForm_paymentStatus", paymentStatus);
+  }, [paymentStatus]);
 
   useEffect(() => {
     localStorage.setItem("receiptForm_itemSearch", itemSearch);
@@ -288,6 +293,7 @@ export function UseInventoryPage() {
       .insert({
         number_plate: trimmedNumberPlate,
         staff_name: staffName.trim(),
+        payment_status: paymentStatus,
         created_by_id: createdById
       })
       .select("id")
@@ -1260,6 +1266,25 @@ export function UseInventoryPage() {
                   Estimated total (blank prices count as RM 0.00)
                 </div>
                 <div style={{ fontWeight: 800 }}>{formatMYR(estimatedTotal)}</div>
+              </div>
+
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+                  <div className="formLabel" style={{ marginBottom: 4 }}>
+                    Payment Status
+                  </div>
+                  <select 
+                    className="select"
+                    style={{ minWidth: 140, fontSize: 14 }}
+                    value={paymentStatus}
+                    onChange={(e) => setPaymentStatus(e.target.value as "paid" | "unpaid" | "other")}
+                    disabled={submitting}
+                  >
+                    <option value="paid">Paid</option>
+                    <option value="unpaid">Unpaid</option>
+                    <option value="other">Other</option>
+                  </select>
+                </div>
               </div>
 
               <div className="row" style={{ marginTop: 14, justifyContent: "flex-end", gap: 12 }}>

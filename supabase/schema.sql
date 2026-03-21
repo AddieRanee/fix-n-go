@@ -39,6 +39,12 @@ create table if not exists public.spare_parts (
 );
 
 -- If you already created the tables, add new columns safely.
+alter table public.inventory add column if not exists low_stock_threshold integer default 5 check (low_stock_threshold >= 0);
+alter table public.inventory add column if not exists original_price numeric(12,2) default 0 check (original_price >= 0);
+alter table public.inventory add column if not exists selling_price numeric(12,2) default 0 check (selling_price >= 0);
+alter table public.spare_parts add column if not exists low_stock_threshold integer default 5 check (low_stock_threshold >= 0);
+alter table public.spare_parts add column if not exists original_price numeric(12,2) default 0 check (original_price >= 0);
+alter table public.spare_parts add column if not exists selling_price numeric(12,2) default 0 check (selling_price >= 0);
 alter table public.inventory add column if not exists date_issued date;
 alter table public.inventory add column if not exists created_at timestamptz not null default now();
 alter table public.spare_parts add column if not exists previous_price numeric(12,2);
@@ -48,6 +54,7 @@ alter table public.spare_parts add column if not exists date_issued date;
 alter table public.spare_parts add column if not exists created_at timestamptz not null default now();
 alter table public.spare_parts alter column price_increase drop default;
 update public.spare_parts set price_increase = null where price_increase = 0;
+alter table public.receipts add column if not exists payment_status text default 'paid' check (payment_status in ('paid','unpaid','other'));
 
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
@@ -337,7 +344,8 @@ create or replace function public.purchase_inventory_item(
   p_item_name text,
   p_category text,
   p_add_quantity integer,
-  p_price numeric
+  p_original_price numeric,
+  p_selling_price numeric
 )
 returns public.inventory
 language plpgsql
@@ -357,8 +365,11 @@ begin
   if p_add_quantity is null or p_add_quantity <= 0 then
     raise exception 'add_quantity must be > 0';
   end if;
-  if p_price is null or p_price < 0 then
-    raise exception 'price must be >= 0';
+  if p_original_price < 0 then
+    raise exception 'original_price must be >= 0';
+  end if;
+  if p_selling_price < 0 then
+    raise exception 'selling_price must be >= 0';
   end if;
 
   select * into v_item
@@ -367,8 +378,8 @@ begin
   for update;
 
   if not found then
-    insert into public.inventory (item_code, item_name, category, stock_quantity, price, last_updated)
-    values (trim(p_item_code), trim(p_item_name), trim(p_category), p_add_quantity, p_price, now())
+    insert into public.inventory (item_code, item_name, category, stock_quantity, original_price, selling_price, low_stock_threshold, last_updated)
+    values (trim(p_item_code), trim(p_item_name), trim(p_category), p_add_quantity, p_original_price, p_selling_price, 5, now())
     returning * into v_item;
     return v_item;
   end if;
@@ -376,7 +387,8 @@ begin
   update public.inventory
   set item_name = trim(p_item_name),
       category = trim(p_category),
-      price = p_price,
+      original_price = p_original_price,
+      selling_price = p_selling_price,
       stock_quantity = stock_quantity + p_add_quantity,
       last_updated = now()
   where id = v_item.id
@@ -390,7 +402,9 @@ $$;
 create or replace function public.add_inventory_stock(
   p_item_code text,
   p_add_quantity integer,
-  p_price numeric default null
+  p_original_price numeric default null,
+  p_selling_price numeric default null,
+  p_low_stock_threshold integer default null
 )
 returns public.inventory
 language plpgsql
@@ -404,8 +418,11 @@ begin
   if p_add_quantity is null or p_add_quantity <= 0 then
     raise exception 'add_quantity must be > 0';
   end if;
-  if p_price is not null and p_price < 0 then
-    raise exception 'price must be >= 0';
+  if p_original_price is not null and p_original_price < 0 then
+    raise exception 'original_price must be >= 0';
+  end if;
+  if p_selling_price is not null and p_selling_price < 0 then
+    raise exception 'selling_price must be >= 0';
   end if;
 
   select * into v_item
@@ -419,7 +436,9 @@ begin
 
   update public.inventory
   set stock_quantity = stock_quantity + p_add_quantity,
-      price = coalesce(p_price, price),
+      original_price = coalesce(p_original_price, original_price),
+      selling_price = coalesce(p_selling_price, selling_price),
+      low_stock_threshold = coalesce(p_low_stock_threshold, low_stock_threshold),
       last_updated = now()
   where id = v_item.id
   returning * into v_item;
@@ -908,6 +927,43 @@ as $$
   order by total_quantity desc, item_code asc
   limit greatest(1, coalesce(p_limit, 10));
 $$;
+
+-- Get low stock inventory items
+create or replace function public.get_low_stock_items()
+returns table (
+  id uuid,
+  item_code text,
+  item_name text,
+  stock_quantity integer,
+  low_stock_threshold integer,
+  selling_price numeric
+)
+language sql
+as $$
+  select id, item_code, item_name, stock_quantity, low_stock_threshold, selling_price
+  from public.inventory 
+  where stock_quantity < coalesce(low_stock_threshold, 5)
+  order by stock_quantity asc, item_code;
+$$;
+
+-- Get low stock spare parts
+create or replace function public.get_low_stock_spare_parts()
+returns table (
+  id uuid,
+  item_code text,
+  item_name text,
+  stock_quantity integer,
+  low_stock_threshold integer,
+  selling_price numeric
+)
+language sql
+as $$
+  select id, item_code, item_name, stock_quantity, low_stock_threshold, selling_price
+  from public.spare_parts 
+  where stock_quantity < coalesce(low_stock_threshold, 5)
+  order by stock_quantity asc, item_code nulls last;
+$$;
+
 
 -- Profiles (Supabase Auth users) + default role
 create table if not exists public.profiles (

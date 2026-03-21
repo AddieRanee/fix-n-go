@@ -15,14 +15,17 @@ const InventoryCreateSchema = z.object({
   item_name: z.string().min(1),
   category: z.string().min(1),
   stock_quantity: z.coerce.number().int().min(0),
-  price: z.coerce.number().min(0),
+  original_price: z.coerce.number().min(0),
+  selling_price: z.coerce.number().min(0),
+  low_stock_threshold: z.coerce.number().int().min(0).optional(),
   date_issued: z.string().optional()
 });
 
 const InventoryStockSchema = z.object({
   item_code: z.string().min(1),
   add_quantity: z.coerce.number().int().positive(),
-  price: z.coerce.number().min(0).optional()
+  original_price: z.coerce.number().min(0).optional(),
+  selling_price: z.coerce.number().min(0).optional()
 });
 
 const InventoryUpdateSchema = z.object({
@@ -30,7 +33,9 @@ const InventoryUpdateSchema = z.object({
   item_name: z.string().min(1),
   category: z.string().min(1),
   stock_quantity: z.coerce.number().int().min(0),
-  price: z.coerce.number().min(0),
+  original_price: z.coerce.number().min(0).optional(),
+  selling_price: z.coerce.number().min(0).optional(),
+  low_stock_threshold: z.coerce.number().int().min(0).optional(),
   date_issued: z.string().optional()
 });
 
@@ -51,7 +56,7 @@ export function inventoryRouter(ctx: Ctx) {
     let query = ctx.supabase
       .from("inventory")
       .select(
-        "id,item_code,item_name,category,stock_quantity,price,date_issued,last_updated"
+        "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
       )
       .order("created_at", { ascending: false, nullsFirst: false });
 
@@ -73,7 +78,7 @@ export function inventoryRouter(ctx: Ctx) {
           last_updated: new Date().toISOString()
         })
         .select(
-          "id,item_code,item_name,category,stock_quantity,price,date_issued,last_updated"
+          "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
         )
         .single();
       if (error) return res.status(400).json({ error: error.message });
@@ -89,7 +94,8 @@ export function inventoryRouter(ctx: Ctx) {
       const { data, error } = await ctx.supabase.rpc("add_inventory_stock", {
         p_item_code: body.item_code,
         p_add_quantity: body.add_quantity,
-        p_price: body.price ?? null
+        p_original_price: body.original_price ?? null,
+        p_selling_price: body.selling_price ?? null
       });
       if (error) return res.status(400).json({ error: error.message });
       res.status(201).json({ item: data });
@@ -102,19 +108,19 @@ export function inventoryRouter(ctx: Ctx) {
     try {
       const body = InventoryUpdateSchema.partial().parse(req.body);
       const { id } = req.params;
-      const patch: Record<string, unknown> = {
-        ...body,
-        last_updated: new Date().toISOString()
-      };
-      if ("date_issued" in body) patch.date_issued = normalizeDateOrNull(body.date_issued);
-      const { data, error } = await ctx.supabase
-        .from("inventory")
-        .update(patch)
-        .eq("id", id)
-        .select(
-          "id,item_code,item_name,category,stock_quantity,price,date_issued,last_updated"
-        )
-        .single();
+        const patch: Record<string, unknown> = {
+          ...body,
+          last_updated: new Date().toISOString()
+        };
+        if ("date_issued" in body) patch.date_issued = normalizeDateOrNull(body.date_issued);
+        const { data, error } = await ctx.supabase
+          .from("inventory")
+          .update(patch)
+          .eq("id", id)
+          .select(
+            "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
+          )
+          .single();
       if (error) return res.status(400).json({ error: error.message });
       res.json({ item: data });
     } catch (err) {

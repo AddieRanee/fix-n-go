@@ -11,7 +11,9 @@ const SparePartCreateSchema = z.object({
   category: z.string().optional(),
   company: z.string().optional(),
   stock_quantity: z.coerce.number().int().min(0),
-  price: z.coerce.number().min(0),
+  original_price: z.coerce.number().min(0),
+  selling_price: z.coerce.number().min(0),
+  low_stock_threshold: z.coerce.number().int().min(0).optional(),
   payment_status: z.enum(["paid", "unpaid"]).optional(),
   date_issued: z.string().optional()
 });
@@ -21,7 +23,8 @@ const SparePartStockSchema = z
     id: z.string().uuid().optional(),
     item_code: z.string().optional(),
     add_quantity: z.coerce.number().int().positive(),
-    price: z.coerce.number().min(0).optional(),
+    original_price: z.coerce.number().min(0).optional(),
+    selling_price: z.coerce.number().min(0).optional(),
     company: z.string().optional()
   })
   .refine((v) => Boolean(v.id) || Boolean(v.item_code?.trim()), {
@@ -35,7 +38,9 @@ const SparePartUpdateSchema = z.object({
   category: z.string().optional(),
   company: z.string().optional(),
   stock_quantity: z.coerce.number().int().min(0),
-  price: z.coerce.number().min(0),
+  original_price: z.coerce.number().min(0).optional(),
+  selling_price: z.coerce.number().min(0).optional(),
+  low_stock_threshold: z.coerce.number().int().min(0).optional(),
   payment_status: z.enum(["paid", "unpaid"]).optional(),
   date_issued: z.string().optional()
 });
@@ -71,7 +76,7 @@ export function sparePartsRouter(ctx: Ctx) {
     let query = ctx.supabase
       .from("spare_parts")
       .select(
-        "id,item_code,item_name,category,company,stock_quantity,price,payment_status,date_issued,last_updated"
+        "id,item_code,item_name,category,company,stock_quantity,original_price,selling_price,low_stock_threshold,payment_status,date_issued,last_updated"
       )
       .order("created_at", { ascending: false, nullsFirst: false });
 
@@ -95,13 +100,15 @@ export function sparePartsRouter(ctx: Ctx) {
           category: normalizeTextOrNull(body.category),
           company: normalizeTextOrNull(body.company),
           stock_quantity: body.stock_quantity,
-          price: body.price,
+          original_price: body.original_price,
+          selling_price: body.selling_price,
+          low_stock_threshold: body.low_stock_threshold ?? 5,
           payment_status: body.payment_status ?? "unpaid",
           date_issued: normalizeDateOrNull(body.date_issued),
           last_updated: new Date().toISOString()
         })
         .select(
-          "id,item_code,item_name,category,company,stock_quantity,price,payment_status,date_issued,last_updated"
+          "id,item_code,item_name,category,company,stock_quantity,original_price,selling_price,low_stock_threshold,payment_status,date_issued,last_updated"
         )
         .single();
       if (error) return res.status(400).json({ error: error.message });
@@ -119,13 +126,15 @@ export function sparePartsRouter(ctx: Ctx) {
         ? await ctx.supabase.rpc("add_spare_part_stock_by_id", {
             p_id: body.id,
             p_add_quantity: body.add_quantity,
-            p_price: body.price ?? null,
+            p_original_price: body.original_price ?? null,
+            p_selling_price: body.selling_price ?? null,
             p_company: normalizeTextOrNull(body.company)
           })
         : await ctx.supabase.rpc("add_spare_part_stock", {
             p_item_code: itemCode,
             p_add_quantity: body.add_quantity,
-            p_price: body.price ?? null,
+            p_original_price: body.original_price ?? null,
+            p_selling_price: body.selling_price ?? null,
             p_company: normalizeTextOrNull(body.company)
           });
       if (error) return res.status(400).json({ error: error.message });
@@ -155,7 +164,7 @@ export function sparePartsRouter(ctx: Ctx) {
         .update(patch)
         .eq("id", id)
         .select(
-          "id,item_code,item_name,category,company,stock_quantity,price,payment_status,date_issued,last_updated"
+          "id,item_code,item_name,category,company,stock_quantity,original_price,selling_price,low_stock_threshold,payment_status,date_issued,last_updated"
         )
         .single();
       if (error) return res.status(400).json({ error: error.message });
