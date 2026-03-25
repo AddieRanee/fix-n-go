@@ -3,8 +3,12 @@ import { useNavigate, useParams } from "react-router-dom";
 import { formatMYR } from "../lib/money";
 import { requireSupabase } from "../lib/supabase";
 import { getApiErrorMessage } from "../lib/errors";
-import { buildReceiptPdfFilename, createReceiptPdfBlob } from "../lib/receiptPdf";
-import { saveReceiptPdfToFolder } from "../lib/receiptSaveFolder";
+import {
+  buildReceiptPdfFilename,
+  createReceiptPdfBlob,
+  printReceiptPdfBlob,
+  saveReceiptPdf
+} from "../lib/receiptPdf";
 
 type LegacyTransaction = {
   id: string;
@@ -54,6 +58,7 @@ export function ReceiptPage() {
   const [total, setTotal] = useState<number>(0);
   const [error, setError] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
+  const [pdfSaved, setPdfSaved] = useState(false);
 
   function formatDDMM(date: Date) {
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" }).format(
@@ -69,8 +74,8 @@ export function ReceiptPage() {
     }).format(date);
   }
 
-  async function handlePrint() {
-    const pdfData = {
+  function buildPdfData() {
+    return {
       receiptNo: receipt ? String(receipt.rec_no ?? receipt.id) : legacyTx?.job_id || "",
       numberPlate: receipt ? receipt.number_plate : legacyTx?.number_plate || "",
       staffName: receipt ? receipt.staff_name || "Blank" : legacyTx?.staff_name || "Blank",
@@ -109,6 +114,10 @@ export function ReceiptPage() {
       total: receipt ? total : legacyTx ? Number(legacyTx.total_price) : 0,
       note: "Keep this receipt for your records."
     };
+  }
+
+  async function handleSaveReceipt() {
+    const pdfData = buildPdfData();
 
     if (!pdfData.receiptNo || !pdfData.numberPlate) return;
 
@@ -116,11 +125,32 @@ export function ReceiptPage() {
     try {
       const blob = createReceiptPdfBlob(pdfData);
       const filename = buildReceiptPdfFilename(pdfData);
-      const saved = await saveReceiptPdfToFolder(blob, filename);
+      const saved = await saveReceiptPdf(blob, filename);
       if (saved === null) return;
-      window.requestAnimationFrame(() => window.print());
+      setPdfSaved(true);
+      setError(
+        saved === false
+          ? "PDF downloaded. To choose a specific drive or folder, use Chrome or Edge."
+          : null
+      );
     } catch (err: any) {
-      setError(getApiErrorMessage(err, "Failed to save PDF or open print dialog"));
+      setError(getApiErrorMessage(err, "Failed to save the receipt PDF"));
+    } finally {
+      setPdfBusy(false);
+    }
+  }
+
+  async function handlePrintReceipt() {
+    const pdfData = buildPdfData();
+
+    if (!pdfData.receiptNo || !pdfData.numberPlate) return;
+
+    setPdfBusy(true);
+    try {
+      const blob = createReceiptPdfBlob(pdfData, { autoPrint: true });
+      await printReceiptPdfBlob(blob);
+    } catch (err: any) {
+      setError(getApiErrorMessage(err, "Failed to open the print dialog"));
     } finally {
       setPdfBusy(false);
     }
@@ -133,6 +163,7 @@ export function ReceiptPage() {
     setReceipt(null);
     setLines([]);
     setTotal(0);
+    setPdfSaved(false);
 
     (async () => {
       try {
@@ -317,7 +348,7 @@ export function ReceiptPage() {
             )}
           </div>
           <div className="muted noPrint" style={{ marginTop: 10 }}>
-            Preview the bill first, then click Print to open the PDF print flow.
+            Save the receipt PDF to any drive or folder first, then print it from the PDF viewer.
           </div>
           {error ? (
             <div
@@ -333,10 +364,18 @@ export function ReceiptPage() {
             <button
               className="button"
               type="button"
-              onClick={() => void handlePrint()}
+              onClick={() => void handleSaveReceipt()}
               disabled={pdfBusy}
             >
-              {pdfBusy ? "Preparing..." : "Print"}
+              {pdfBusy ? "Preparing..." : pdfSaved ? "Re-save PDF" : "Save PDF"}
+            </button>
+            <button
+              className="button"
+              type="button"
+              onClick={() => void handlePrintReceipt()}
+              disabled={pdfBusy}
+            >
+              {pdfBusy ? "Opening..." : "Print"}
             </button>
             <button
               className="button"
@@ -346,6 +385,15 @@ export function ReceiptPage() {
               Back to Cash Bill
             </button>
           </div>
+          {pdfSaved ? (
+            <div className="muted noPrint" style={{ marginBottom: 14 }}>
+              PDF saved. You can now print it whenever you are ready.
+            </div>
+          ) : (
+            <div className="muted noPrint" style={{ marginBottom: 14 }}>
+              You can save the PDF or print it directly.
+            </div>
+          )}
           {!receipt && !legacyTx ? (
             <div className="muted">Loading...</div>
           ) : receipt ? (

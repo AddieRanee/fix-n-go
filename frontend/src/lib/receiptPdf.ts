@@ -20,6 +20,10 @@ export type ReceiptPdfData = {
   note?: string;
 };
 
+type ReceiptPdfOptions = {
+  autoPrint?: boolean;
+};
+
 function safeFilename(text: string) {
   return text.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
 }
@@ -30,7 +34,7 @@ export function buildReceiptPdfFilename(data: ReceiptPdfData) {
   ) + ".pdf";
 }
 
-export function createReceiptPdfBlob(data: ReceiptPdfData) {
+export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfOptions) {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageWidth = doc.internal.pageSize.getWidth();
   const marginX = 24;
@@ -118,6 +122,10 @@ export function createReceiptPdfBlob(data: ReceiptPdfData) {
   doc.setFontSize(10);
   doc.text(data.note || "Keep this receipt for your records.", marginX, finalY + 40);
 
+  if (options?.autoPrint) {
+    doc.autoPrint({ variant: "non-conform" });
+  }
+
   return doc.output("blob");
 }
 
@@ -170,12 +178,12 @@ function initializeReceiptPrintWindow(win: Window) {
   <head>
     <title>Print Receipt</title>
     <style>
-      html, body { margin: 0; height: 100%; background: #fff; }
-      iframe { border: 0; width: 100vw; height: 100vh; }
+      html, body { margin: 0; height: 100%; background: #fff; overflow: hidden; }
+      iframe { border: 0; width: 100vw; height: 100vh; display: block; }
     </style>
   </head>
   <body>
-    <iframe id="pdfFrame"></iframe>
+    <iframe id="pdfFrame" title="Receipt PDF"></iframe>
   </body>
 </html>`);
   win.document.close();
@@ -189,8 +197,14 @@ function printPdfInWindow(win: Window, url: string) {
   const triggerPrint = () => {
     if (printed) return;
     printed = true;
-    win.focus();
-    win.print();
+    const pdfWindow = frame.contentWindow;
+    if (pdfWindow) {
+      pdfWindow.focus();
+      pdfWindow.print();
+    } else {
+      win.focus();
+      win.print();
+    }
     window.setTimeout(() => win.close(), 1000);
   };
 
@@ -222,4 +236,64 @@ export function openReceiptPdfWindow(url: string) {
   a.click();
   a.remove();
   return false;
+}
+
+export async function printReceiptPdfBlob(blob: Blob) {
+  const url = URL.createObjectURL(blob);
+  const frame = document.createElement("iframe");
+  frame.title = "Receipt PDF";
+  frame.style.position = "fixed";
+  frame.style.right = "0";
+  frame.style.bottom = "0";
+  frame.style.width = "0";
+  frame.style.height = "0";
+  frame.style.border = "0";
+  frame.style.opacity = "0";
+  document.body.appendChild(frame);
+
+  try {
+    await new Promise<void>((resolve, reject) => {
+      let printed = false;
+      const cleanup = () => {
+        window.setTimeout(() => {
+          frame.remove();
+          URL.revokeObjectURL(url);
+        }, 500);
+      };
+
+      const triggerPrint = () => {
+        if (printed) return;
+        printed = true;
+        const win = frame.contentWindow;
+        if (!win) {
+          cleanup();
+          reject(new Error("Unable to open the receipt for printing."));
+          return;
+        }
+
+        try {
+          win.focus();
+          win.print();
+          cleanup();
+          resolve();
+        } catch (err) {
+          cleanup();
+          reject(err);
+        }
+      };
+
+      frame.onload = () => window.setTimeout(triggerPrint, 400);
+      frame.onerror = () => {
+        cleanup();
+        reject(new Error("Failed to load the receipt PDF for printing."));
+      };
+
+      frame.src = url;
+      window.setTimeout(triggerPrint, 2500);
+    });
+  } catch (err) {
+    frame.remove();
+    URL.revokeObjectURL(url);
+    throw err;
+  }
 }
