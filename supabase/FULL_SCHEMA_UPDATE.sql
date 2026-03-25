@@ -14,6 +14,7 @@ ALTER TABLE public.spare_parts ADD COLUMN IF NOT EXISTS original_price numeric(1
 ALTER TABLE public.spare_parts ADD COLUMN IF NOT EXISTS selling_price numeric(12,2) DEFAULT 0 CHECK (selling_price >= 0);
 
 ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS payment_status text DEFAULT 'paid' CHECK (payment_status IN ('paid', 'unpaid', 'other'));
+ALTER TABLE public.receipts ADD COLUMN IF NOT EXISTS payment_note text;
 
 -- 2. UPDATE RPCs FOR NEW FIELDS
 CREATE OR REPLACE FUNCTION public.add_inventory_stock(

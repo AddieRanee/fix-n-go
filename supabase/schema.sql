@@ -55,6 +55,7 @@ alter table public.spare_parts add column if not exists created_at timestamptz n
 alter table public.spare_parts alter column price_increase drop default;
 update public.spare_parts set price_increase = null where price_increase = 0;
 alter table public.receipts add column if not exists payment_status text default 'paid' check (payment_status in ('paid','unpaid','other'));
+alter table public.receipts add column if not exists payment_note text;
 
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),

@@ -18,6 +18,7 @@ const CreateReceiptSchema = z.object({
   number_plate: z.string().min(1),
   staff_name: z.string().optional(),
   payment_status: z.enum(["paid", "unpaid", "other"]).optional(),
+  payment_note: z.string().optional(),
   lines: z.array(ReceiptLineSchema).min(1)
 });
 
@@ -29,8 +30,34 @@ const UpdateReceiptSchema = z.object({
   number_plate: z.string().min(1),
   staff_name: z.string().optional(),
   payment_status: z.enum(["paid", "unpaid", "other"]).optional(),
+  payment_note: z.string().optional(),
   lines: z.array(ReceiptLineUpdateSchema).min(1)
 });
+
+type ReceiptLineInput = z.infer<typeof ReceiptLineSchema>;
+
+function normalizeReceiptItemKey(value?: string | null) {
+  return (value ?? "").trim().toLowerCase();
+}
+
+function assertNoDuplicateBillItems(lines: ReceiptLineInput[]) {
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    let key = "";
+    if (line.type === "inventory") {
+      key = `inventory:${normalizeReceiptItemKey(line.item_code)}`;
+    } else if (line.type === "spare_part") {
+      key = `spare_part:${normalizeReceiptItemKey(line.spare_part_id || line.description)}`;
+    }
+
+    if (!key) continue;
+    if (seen.has(key)) {
+      throw new Error("Duplicate inventory or spare part items are not allowed in the same receipt.");
+    }
+    seen.add(key);
+  }
+}
 
 export function receiptsRouter(ctx: Ctx) {
   const router = Router();
@@ -63,7 +90,7 @@ export function receiptsRouter(ctx: Ctx) {
 
     let q = ctx.supabase
       .from("receipts")
-      .select("id,rec_no,number_plate,staff_name,payment_status,created_at")
+      .select("id,rec_no,number_plate,staff_name,payment_status,payment_note,created_at")
       .order("created_at", { ascending: false });
 
     if (recNo) {
@@ -80,12 +107,14 @@ export function receiptsRouter(ctx: Ctx) {
   router.post("/", requireAuth, async (req, res, next) => {
     try {
       const body = CreateReceiptSchema.parse(req.body);
+      assertNoDuplicateBillItems(body.lines);
       const receiptInsert = await ctx.supabase
         .from("receipts")
         .insert({
           number_plate: body.number_plate.trim(),
           staff_name: body.staff_name ?? "",
           payment_status: (body.payment_status as string) ?? 'paid',
+          payment_note: (body.payment_note ?? "").trim() || null,
           created_by_id: req.user?.id ?? null
         })
         .select("id")
@@ -212,7 +241,7 @@ export function receiptsRouter(ctx: Ctx) {
     try {
       const { data: receipt, error: rErr } = await ctx.supabase
         .from("receipts")
-        .select("id,rec_no,number_plate,staff_name,created_at")
+        .select("id,rec_no,number_plate,staff_name,payment_status,payment_note,created_at")
         .eq("id", id)
         .single();
       if (rErr) return res.status(404).json({ error: "Not found" });
@@ -323,6 +352,7 @@ export function receiptsRouter(ctx: Ctx) {
     try {
       const { id } = req.params;
       const body = UpdateReceiptSchema.parse(req.body);
+      assertNoDuplicateBillItems(body.lines);
 
       // Load existing lines to prevent changing inventory/spare-part quantities (stock already deducted).
       const { data: existingLines, error: eErr } = await ctx.supabase
@@ -366,7 +396,8 @@ export function receiptsRouter(ctx: Ctx) {
         .update({
           number_plate: body.number_plate,
           staff_name: body.staff_name ?? "",
-          payment_status: (body.payment_status as string) ?? 'paid'
+          payment_status: (body.payment_status as string) ?? 'paid',
+          payment_note: (body.payment_note ?? "").trim() || null
         })
         .eq("id", id);
       if (uErr) return res.status(400).json({ error: uErr.message });

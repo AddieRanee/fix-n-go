@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import type { InventoryItem, SparePartItem, ReceiptLine, ReceiptDetail, ReceiptEditOriginalLine, ReceiptEditOriginalReceipt } from "../types/receipt";
 import { useNavigate } from "react-router-dom";
 import { Modal } from "../components/Modal";
 import { useAuth } from "../state/auth";
@@ -6,77 +7,34 @@ import { formatMYR } from "../lib/money";
 import { requireSupabase } from "../lib/supabase";
 import { getApiErrorMessage } from "../lib/errors";
 
-type InventoryItem = {
-  id: string;
-  item_code: string;
-  item_name: string;
-  stock_quantity: number;
-  price: number;
-};
 
-type SparePartItem = {
-  id: string;
-  item_code: string | null;
-  item_name: string | null;
-  stock_quantity: number;
-  price: number;
-  company: string | null;
-};
 
-type ReceiptLine = {
-  id: string;
-  type: "inventory" | "spare_part" | "service" | "custom";
-  item_code?: string; // inventory
-  item_name?: string; // inventory
-  spare_part_id?: string; // spare parts
-  description?: string; // service/custom
-  qty: number;
-  unit_price?: string; // keep as text so blank is allowed
-};
 
-type ReceiptDetail = {
-  receipt: {
-    id: string;
-    job_id: string;
-    rec_no?: number | null;
-    number_plate: string;
-    staff_name: string;
-    created_at: string;
-  };
-  lines: {
-    id: string;
-    line_type: "inventory" | "spare_part" | "service" | "custom";
-    inventory_item_code: string | null;
-    spare_part_id: string | null;
-    description: string | null;
-    quantity: number | null;
-    unit_price: number | null;
-  }[];
-};
 
-type ReceiptEditOriginalLine = {
-  line_type: "inventory" | "spare_part" | "service" | "custom";
-  inventory_item_code: string | null;
-  spare_part_id: string | null;
-  description: string | null;
-  quantity: number | null;
-  unit_price: number | null;
-};
 
-type ReceiptEditOriginalReceipt = {
-  number_plate: string;
-  staff_name: string;
-} | null;
+
+
+
+
+
+
+
+
 
 export function UseInventoryPage() {
   const nav = useNavigate();
   const { user } = useAuth();
   const [items, setItems] = useState<InventoryItem[]>([]);
-  const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
+const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
+
+
   const [receipts, setReceipts] = useState<
     { id: string; rec_no?: number; number_plate: string; staff_name: string; created_at: string }[]
   >([]);
   const [itemSearch, setItemSearch] = useState(() => localStorage.getItem("receiptForm_itemSearch") || "");
+  
+  const sparePartLabel = (i: SparePartItem) => `${i.item_code ?? i.id} - ${i.item_name}${i.company ? ` (${i.company})` : ''}`;
+  
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -90,11 +48,14 @@ export function UseInventoryPage() {
   const [editRecNo, setEditRecNo] = useState<number | null>(null);
   const [editNumberPlate, setEditNumberPlate] = useState("");
   const [editStaffName, setEditStaffName] = useState("");
+  const [editPaymentStatus, setEditPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
+  const [editPaymentNote, setEditPaymentNote] = useState("");
 
   const [jobId, setJobId] = useState(() => localStorage.getItem("receiptForm_jobId") || "J");
   const [numberPlate, setNumberPlate] = useState(() => localStorage.getItem("receiptForm_numberPlate") || "");
   const [staffName, setStaffName] = useState(() => localStorage.getItem("receiptForm_staffName") || "");
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
+  const [otherReason, setOtherReason] = useState(() => localStorage.getItem("receiptForm_otherReason") || "");
 
   const [lines, setLines] = useState<ReceiptLine[]>(() => {
     const savedLines = localStorage.getItem("receiptForm_lines");
@@ -110,6 +71,62 @@ export function UseInventoryPage() {
     }
     return [];
   });
+
+  function normalizeLookup(value?: string | null) {
+    return (value ?? "").trim().toLowerCase();
+  }
+
+  function hasDuplicateBillItem(candidate: ReceiptLine, excludeId?: string) {
+    if (candidate.type === "inventory") {
+      const candidateCode = normalizeLookup(candidate.item_code);
+      if (!candidateCode) return false;
+      return lines.some(
+        (row) =>
+          row.id !== excludeId &&
+          row.type === "inventory" &&
+          normalizeLookup(row.item_code) === candidateCode
+      );
+    }
+
+    if (candidate.type === "spare_part") {
+      const candidateKey = normalizeLookup(candidate.spare_part_id || candidate.description);
+      if (!candidateKey) return false;
+      return lines.some(
+        (row) =>
+          row.id !== excludeId &&
+          row.type === "spare_part" &&
+          normalizeLookup(row.spare_part_id || row.description) === candidateKey
+      );
+    }
+
+    return false;
+  }
+
+  function hasDuplicateEditBillItem(candidate: ReceiptLine, excludeId?: string) {
+    if (candidate.type === "inventory") {
+      const candidateCode = normalizeLookup(candidate.item_code);
+      if (!candidateCode) return false;
+      return editLines.some(
+        (row) =>
+          row.id !== excludeId &&
+          row.type === "inventory" &&
+          normalizeLookup(row.item_code) === candidateCode
+      );
+    }
+
+    if (candidate.type === "spare_part") {
+      const candidateKey = normalizeLookup(candidate.spare_part_id || candidate.description);
+      if (!candidateKey) return false;
+      return editLines.some(
+        (row) =>
+          row.id !== excludeId &&
+          row.type === "spare_part" &&
+          normalizeLookup(row.spare_part_id || row.description) === candidateKey
+      );
+    }
+
+    return false;
+  }
 
   // Save form data to localStorage when it changes
   useEffect(() => {
@@ -127,6 +144,10 @@ export function UseInventoryPage() {
   useEffect(() => {
     localStorage.setItem("receiptForm_paymentStatus", paymentStatus);
   }, [paymentStatus]);
+
+  useEffect(() => {
+    localStorage.setItem("receiptForm_otherReason", otherReason);
+  }, [otherReason]);
 
   useEffect(() => {
     localStorage.setItem("receiptForm_itemSearch", itemSearch);
@@ -150,8 +171,8 @@ export function UseInventoryPage() {
             .order("created_at", { ascending: false }),
           supabase
             .from("spare_parts")
-            .select("id,item_code,item_name,stock_quantity,price,company")
-            .order("created_at", { ascending: false }),
+            .select("id,item_code,item_name,company,price,stock_quantity")
+            .order("item_code"),
           supabase
             .from("receipts")
             .select("id,rec_no,number_plate,staff_name,created_at")
@@ -187,22 +208,19 @@ export function UseInventoryPage() {
   const filteredItems = useMemo(() => {
     const q = itemSearch.trim().toLowerCase();
     if (!q) return { inv: items, sp: spareParts };
-    const inv = items.filter((i) => {
-      return (
-        i.item_code.toLowerCase().includes(q) ||
-        i.item_name.toLowerCase().includes(q)
-      );
-    });
-    const sp = spareParts.filter((i) => {
-      const code = (i.item_code ?? "").toLowerCase();
-      const name = (i.item_name ?? "").toLowerCase();
-      const company = (i.company ?? "").toLowerCase();
-      return code.includes(q) || name.includes(q) || company.includes(q);
-    });
+    
+    const inv = items.filter((i) => 
+      i.item_code.toLowerCase().includes(q) || i.item_name.toLowerCase().includes(q)
+    );
+    const sp = spareParts.filter((s) =>
+      s.item_code?.toLowerCase().includes(q) || 
+      s.item_name.toLowerCase().includes(q) || 
+      s.company?.toLowerCase().includes(q)
+    );
     return { inv, sp };
-  }, [items, itemSearch, spareParts]);
+  }, [items, spareParts, itemSearch]);
 
-  function addQuickItem(selection: string) {
+function addQuickItem(selection: string) {
     if (!selection) return;
     const [type, rawId] = selection.split(":", 2);
     if (type === "inventory") {
@@ -231,27 +249,34 @@ export function UseInventoryPage() {
           id: crypto.randomUUID(),
           type: "spare_part",
           spare_part_id: item.id,
+          description: sparePartLabel(item),
           qty: 1,
           unit_price: item.price.toFixed(2)
         }
       ]);
       setItemSearch("");
+      return;
     }
   }
 
-  function sparePartLabel(i: SparePartItem): string {
-    const code = (i.item_code ?? "").trim();
-    const name = (i.item_name ?? "").trim();
-    const show = code || name || "Blank";
-    const company = (i.company ?? "").trim();
-    const companySuffix = company ? ` | ${company}` : "";
-    return `${show}${companySuffix} (stock: ${i.stock_quantity})`;
-  }
+
 
   function getInventoryName(itemCode?: string | null) {
     const code = (itemCode ?? "").trim();
     if (!code) return "";
     return items.find((i) => i.item_code === code)?.item_name ?? "";
+  }
+
+  function findExistingSparePart(nameOrCode?: string | null) {
+    const key = (nameOrCode ?? "").trim().toLowerCase();
+    if (!key) return null;
+    return (
+      spareParts.find((i) =>
+        [i.id, i.item_code ?? "", i.item_name ?? ""].some((value) =>
+          value.trim().toLowerCase() === key
+        )
+      ) ?? null
+    );
   }
 
   async function refreshNextRecNo(supabase = requireSupabase()) {
@@ -286,6 +311,25 @@ export function UseInventoryPage() {
       return null;
     }
 
+    const seenInventory = new Set<string>();
+    const seenSpareParts = new Set<string>();
+    for (const row of lines) {
+      if (row.type === "inventory") {
+        const key = normalizeLookup(row.item_code);
+        if (key && seenInventory.has(key)) {
+          throw new Error("The same inventory item cannot appear more than once on the bill.");
+        }
+        if (key) seenInventory.add(key);
+      }
+      if (row.type === "spare_part") {
+        const key = normalizeLookup(row.spare_part_id || row.description);
+        if (key && seenSpareParts.has(key)) {
+          throw new Error("The same spare part cannot appear more than once on the bill.");
+        }
+        if (key) seenSpareParts.add(key);
+      }
+    }
+
     const supabase = requireSupabase();
     const createdById = user?.id ?? null;
     const receiptInsert = await supabase
@@ -294,6 +338,7 @@ export function UseInventoryPage() {
         number_plate: trimmedNumberPlate,
         staff_name: staffName.trim(),
         payment_status: paymentStatus,
+        payment_note: paymentStatus === "other" ? otherReason.trim() : null,
         created_by_id: createdById
       })
       .select("id")
@@ -371,34 +416,55 @@ export function UseInventoryPage() {
           continue;
         }
 
+
+
         if (l.type === "spare_part") {
-          const sparePartId = l.spare_part_id ?? "";
-          if (!sparePartId) throw new Error("spare_part_id is required");
+          let sparePartId = (l.spare_part_id ?? "").trim();
+          const sparePartName = (l.description ?? "").trim();
+
+          if (!sparePartId) {
+            if (!sparePartName) throw new Error("spare part name is required");
+            const existing = findExistingSparePart(sparePartName);
+            if (existing) {
+              sparePartId = existing.id;
+            } else {
+              const createdPart = await supabase
+                .from("spare_parts")
+                .insert({
+                  item_code: null,
+                  item_name: sparePartName,
+                  category: null,
+                  company: null,
+                  stock_quantity: qty,
+                  price: unit_price ?? 0,
+                  payment_status: "unpaid",
+                  date_issued: null,
+                  last_updated: new Date().toISOString()
+                })
+                .select("id,item_code,item_name,company,stock_quantity,price")
+                .single();
+              if (createdPart.error) throw createdPart.error;
+              sparePartId = createdPart.data.id as string;
+              setSpareParts((prev) => [createdPart.data, ...prev]);
+            }
+          }
 
           const spRes = await supabase
             .from("spare_parts")
-            .select("id,item_code,item_name,stock_quantity,price")
+            .select("id,item_code,item_name,company,stock_quantity,price")
             .eq("id", sparePartId)
             .single();
           if (spRes.error) throw spRes.error;
-          if (!spRes.data) throw new Error(`spare_part id not found: ${sparePartId}`);
-          if (spRes.data.stock_quantity < qty) {
-            throw new Error(
-              `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (have ${spRes.data.stock_quantity}, need ${qty})`
-            );
-          }
+          if (!spRes.data) throw new Error(`spare_part not found: ${sparePartId}`);
+          if (spRes.data.stock_quantity < qty) throw new Error(
+            `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (${spRes.data.stock_quantity} < ${qty})`
+          );
 
-          spareRollbacks.push({
-            id: sparePartId,
-            stock_quantity: spRes.data.stock_quantity
-          });
+          spareRollbacks.push({ id: sparePartId, stock_quantity: spRes.data.stock_quantity });
 
           const { error: updErr } = await supabase
             .from("spare_parts")
-            .update({
-              stock_quantity: spRes.data.stock_quantity - qty,
-              last_updated: new Date().toISOString()
-            })
+            .update({ stock_quantity: spRes.data.stock_quantity - qty, last_updated: new Date().toISOString() })
             .eq("id", sparePartId);
           if (updErr) throw updErr;
 
@@ -459,8 +525,7 @@ export function UseInventoryPage() {
       localStorage.removeItem("receiptForm_numberPlate");
       localStorage.removeItem("receiptForm_staffName");
       localStorage.removeItem("receiptForm_lines");
-      localStorage.removeItem("receiptForm_itemSearch");
-      setItemSearch("");
+      localStorage.removeItem("receiptForm_itemSearch");  
 
       nav(`/receipt/${id}`);
       window.dispatchEvent(new CustomEvent("fixngo:inventory-changed"));
@@ -475,10 +540,10 @@ export function UseInventoryPage() {
     setJobId("J");
     setNumberPlate("");
     setStaffName("");
-    setItemSearch("");
-    setLines([]);
-    setError(null);
-    setItemSearch("");
+    setOtherReason("");
+  setItemSearch("");  
+    setLines([]);  
+    setError(null);  
     
     // Clear localStorage
     localStorage.removeItem("receiptForm_jobId");
@@ -486,6 +551,7 @@ export function UseInventoryPage() {
     localStorage.removeItem("receiptForm_staffName");
     localStorage.removeItem("receiptForm_lines");
     localStorage.removeItem("receiptForm_itemSearch");
+    localStorage.removeItem("receiptForm_otherReason");
   }
 
   function addLine(type: ReceiptLine["type"]) {
@@ -509,12 +575,12 @@ export function UseInventoryPage() {
           const it = items.find((i) => i.item_code === l.item_code);
           if (it) return it.price * qty;
         }
-        // For spare parts, service, and custom: only use unit_price if provided
+        // For service, and custom: only use unit_price if provided
         return 0;
       })();
       return sum + add;
     }, 0);
-  }, [items, lines, spareParts]);
+  }, [items, lines]);
 
   async function refreshReceipts() {
     const supabase = requireSupabase();
@@ -608,7 +674,7 @@ export function UseInventoryPage() {
   }
 
   async function saveModifiedReceiptDirect() {
-    if (!editId) return;
+    if (!editId) return null;
 
     const supabase = requireSupabase();
     const receiptId = editId;
@@ -616,6 +682,7 @@ export function UseInventoryPage() {
     const originalLines = editOriginalLines;
     const originalLineSnapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[] = [];
     const appliedLineSnapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[] = [];
+    const createdSparePartIds: string[] = [];
 
     const restoreSnapshots = async (
       snapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[]
@@ -636,6 +703,25 @@ export function UseInventoryPage() {
     };
 
     try {
+      const seenInventory = new Set<string>();
+      const seenSpareParts = new Set<string>();
+      for (const row of editLines) {
+        if (row.type === "inventory") {
+          const key = normalizeLookup(row.item_code);
+          if (key && seenInventory.has(key)) {
+            throw new Error("The same inventory item cannot appear more than once on the bill.");
+          }
+          if (key) seenInventory.add(key);
+        }
+        if (row.type === "spare_part") {
+          const key = normalizeLookup(row.spare_part_id || row.description);
+          if (key && seenSpareParts.has(key)) {
+            throw new Error("The same spare part cannot appear more than once on the bill.");
+          }
+          if (key) seenSpareParts.add(key);
+        }
+      }
+
       for (const line of originalLines) {
         const qty = Number(line.quantity ?? 1);
         if (line.line_type === "inventory" && line.inventory_item_code) {
@@ -680,7 +766,9 @@ export function UseInventoryPage() {
         .from("receipts")
         .update({
           number_plate: editNumberPlate.trim(),
-          staff_name: editStaffName.trim()
+          staff_name: editStaffName.trim(),
+          payment_status: editPaymentStatus,
+          payment_note: editPaymentStatus === "other" ? editPaymentNote.trim() : null
         })
         .eq("id", receiptId);
       if (receiptUpdateErr) throw receiptUpdateErr;
@@ -754,8 +842,36 @@ export function UseInventoryPage() {
         }
 
         if (l.type === "spare_part") {
-          const sparePartId = (l.spare_part_id ?? "").trim();
-          if (!sparePartId) throw new Error("spare_part_id is required");
+          let sparePartId = (l.spare_part_id ?? "").trim();
+          const sparePartName = (l.description ?? "").trim();
+
+          if (!sparePartId) {
+            if (!sparePartName) throw new Error("spare part name is required");
+            const existingSparePart = findExistingSparePart(sparePartName);
+            if (existingSparePart) {
+              sparePartId = existingSparePart.id;
+            } else {
+              const createdPart = await supabase
+                .from("spare_parts")
+                .insert({
+                  item_code: null,
+                  item_name: sparePartName,
+                  category: "General",
+                  company: null,
+                  stock_quantity: qty,
+                  price: l.unit_price ?? 0,
+                  payment_status: "unpaid",
+                  date_issued: null,
+                  last_updated: new Date().toISOString()
+                })
+                .select("id,item_code,item_name,company,stock_quantity,price")
+                .single();
+              if (createdPart.error) throw createdPart.error;
+              sparePartId = String(createdPart.data.id);
+              createdSparePartIds.push(sparePartId);
+              setSpareParts((prev) => [createdPart.data as SparePartItem, ...prev]);
+            }
+          }
 
           const spRes = await supabase
             .from("spare_parts")
@@ -818,12 +934,16 @@ export function UseInventoryPage() {
         throw new Error("Receipt update was saved but no receipt lines were written.");
       }
 
-      return;
+      return receiptId;
     } catch (err) {
       await restoreSnapshots(appliedLineSnapshots);
       await supabase.from("receipt_lines").delete().eq("receipt_id", receiptId);
+      if (createdSparePartIds.length) {
+        await supabase.from("spare_parts").delete().in("id", createdSparePartIds);
+        setSpareParts((prev) => prev.filter((part) => !createdSparePartIds.includes(part.id)));
+      }
 
-      const reinserts = originalLines.map((l) => ({
+        const reinserts = originalLines.map((l) => ({
         receipt_id: receiptId,
         line_type: l.line_type,
         inventory_item_code: l.line_type === "inventory" ? l.inventory_item_code : null,
@@ -831,7 +951,7 @@ export function UseInventoryPage() {
         description: l.description,
         quantity: l.quantity,
         unit_price: l.unit_price
-      }));
+      })).filter(r => r.inventory_item_code || r.spare_part_id || r.description); // skip blank lines
 
       if (reinserts.length) {
         await supabase.from("receipt_lines").insert(reinserts);
@@ -842,7 +962,9 @@ export function UseInventoryPage() {
           .from("receipts")
           .update({
             number_plate: originalReceipt.number_plate,
-            staff_name: originalReceipt.staff_name
+            staff_name: originalReceipt.staff_name,
+            payment_status: originalReceipt.payment_status,
+            payment_note: originalReceipt.payment_note || null
           })
           .eq("id", receiptId);
       }
@@ -856,7 +978,7 @@ export function UseInventoryPage() {
     const supabase = requireSupabase();
     const receiptRes = await supabase
       .from("receipts")
-      .select("id,rec_no,number_plate,staff_name,created_at")
+      .select("id,rec_no,number_plate,staff_name,payment_status,payment_note,created_at")
       .eq("id", id)
       .single();
     if (receiptRes.error) throw receiptRes.error;
@@ -869,18 +991,30 @@ export function UseInventoryPage() {
       .order("created_at", { ascending: true });
     if (linesRes.error) throw linesRes.error;
 
-    const data: ReceiptDetail = {
+    const data = {
       receipt: receiptRes.data as any,
-      lines: (linesRes.data ?? []) as any
+      lines: (linesRes.data ?? []) as Array<{
+        id: string;
+        line_type: ReceiptEditOriginalLine["line_type"];
+        inventory_item_code: string | null;
+        spare_part_id: string | null;
+        description: string | null;
+        quantity: number | null;
+        unit_price: number | null;
+      }>
     };
     setEditId(id);
     setEditRecNo(data.receipt.rec_no ?? null);
     setEditOriginalReceipt({
       number_plate: data.receipt.number_plate,
-      staff_name: data.receipt.staff_name ?? ""
+      staff_name: data.receipt.staff_name ?? "",
+      payment_status: (data.receipt.payment_status ?? "paid") as "paid" | "unpaid" | "other",
+      payment_note: data.receipt.payment_note ?? ""
     });
     setEditNumberPlate(data.receipt.number_plate);
     setEditStaffName(data.receipt.staff_name ?? "");
+    setEditPaymentStatus((data.receipt.payment_status ?? "paid") as "paid" | "unpaid" | "other");
+    setEditPaymentNote(data.receipt.payment_note ?? "");
     setEditOriginalLines(
       (data.lines ?? []).map((l) => ({
         line_type: l.line_type,
@@ -901,7 +1035,12 @@ export function UseInventoryPage() {
             ? getInventoryName(l.inventory_item_code) || undefined
             : undefined,
         spare_part_id: l.spare_part_id ?? undefined,
-        description: l.description ?? undefined,
+        description:
+          l.line_type === "spare_part"
+            ? spareParts.find((part) => part.id === l.spare_part_id)?.item_name ??
+              l.description ??
+              undefined
+            : l.description ?? undefined,
         qty: l.quantity ?? 1,
         unit_price: l.unit_price === null ? "" : String(l.unit_price ?? "")
       }))
@@ -914,7 +1053,7 @@ export function UseInventoryPage() {
       <div className="card">
         <div className="cardHeader">
           <div className="row">
-            <h1 className="title">Receipts</h1>
+            <h1 className="title">Use Inventory</h1>
             <span className="muted">Record item usage and print receipt</span>
           </div>
           {error ? (
@@ -984,11 +1123,11 @@ export function UseInventoryPage() {
                   />
                   {itemSearch.trim() ? (
                     <div className="searchDropdown">
-                      {filteredItems.inv.length === 0 && filteredItems.sp.length === 0 ? (
+{(filteredItems.inv?.length ?? 0) === 0 && (filteredItems.sp?.length ?? 0) === 0 ? (
                         <div className="searchDropdownEmpty">No matches found</div>
                       ) : (
                         <>
-                          {filteredItems.inv.length ? (
+                          {filteredItems.inv?.length ? (
                             <div className="searchDropdownGroup">
                               <div className="searchDropdownLabel">Inventory</div>
                               {filteredItems.inv.map((i) => (
@@ -1037,12 +1176,7 @@ export function UseInventoryPage() {
                   <button className="button" type="button" onClick={() => addLine("inventory")}>
                     + Inventory Item
                   </button>
-                  <button
-                    className="button"
-                    type="button"
-                    style={{ background: "rgba(255,255,255,0.06)" }}
-                    onClick={() => addLine("spare_part")}
-                  >
+                  <button className="button" type="button" onClick={() => addLine("spare_part")}>
                     + Spare Part
                   </button>
                 </div>
@@ -1129,9 +1263,20 @@ export function UseInventoryPage() {
                                 className="select"
                                 value={l.item_code ?? ""}
                                 disabled={submitting}
-                                onChange={(e) =>
+                                onChange={(e) => {
+                                  const nextCode = e.target.value;
+                                  if (nextCode && hasDuplicateBillItem({
+                                    id: l.id,
+                                    type: "inventory",
+                                    item_code: nextCode,
+                                    item_name: "",
+                                    qty: l.qty,
+                                    unit_price: l.unit_price
+                                  }, l.id)) {
+                                    setError("The same inventory item cannot appear more than once on the bill.");
+                                    return;
+                                  }
                                   setLines((prev) => {
-                                    const nextCode = e.target.value;
                                     const it = items.find((i) => i.item_code === nextCode);
                                     return prev.map((x) =>
                                       x.id === l.id
@@ -1148,44 +1293,38 @@ export function UseInventoryPage() {
                                           }
                                         : x
                                     );
-                                  })
-                                }
+                                  });
+                                }}
                                 style={{ width: "100%" }}
                               >
                                 <option value="">Choose item...</option>
-                                {(filteredItems.inv as InventoryItem[]).map((i) => (
+                                {items.map((i: InventoryItem) => (
                                   <option key={i.id} value={i.item_code}>
                                     {i.item_code} - {i.item_name} (stock: {i.stock_quantity})
                                   </option>
-                                ))}
+                                )) || []}
                               </select>
                             ) : l.type === "spare_part" ? (
-                              <select
-                                className="select"
-                                value={l.spare_part_id ?? ""}
+                              <input
+                                className="input"
+                                placeholder="Type what you want to add"
+                                value={l.description ?? ""}
                                 disabled={submitting}
                                 onChange={(e) =>
-                                  setLines((prev) => {
-                                    const nextId = e.target.value;
-                                    return prev.map((x) =>
+                                  setLines((prev) =>
+                                    prev.map((x) =>
                                       x.id === l.id
                                         ? {
                                             ...x,
-                                            spare_part_id: nextId
+                                            description: e.target.value,
+                                            spare_part_id: undefined
                                           }
                                         : x
-                                    );
-                                  })
+                                    )
+                                  )
                                 }
                                 style={{ width: "100%" }}
-                              >
-                                <option value="">Choose spare part...</option>
-                                {(filteredItems.sp as SparePartItem[]).map((i) => (
-                                  <option key={i.id} value={i.id}>
-                                    {sparePartLabel(i)}
-                                  </option>
-                                ))}
-                              </select>
+                              />
                             ) : (
                               <input
                                 className="input"
@@ -1285,6 +1424,21 @@ export function UseInventoryPage() {
                     <option value="other">Other</option>
                   </select>
                 </div>
+                {paymentStatus === "other" ? (
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      className="input"
+                      value={otherReason}
+                      onChange={(e) => setOtherReason(e.target.value)}
+                      placeholder="Reason for reference only"
+                      disabled={submitting}
+                      style={{ minWidth: 260 }}
+                    />
+                    <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                      This note is for your reference only and will not appear in the cash bill PDF.
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="row" style={{ marginTop: 14, justifyContent: "flex-end", gap: 12 }}>
@@ -1435,6 +1589,7 @@ export function UseInventoryPage() {
           setEditId(null);
           setEditOriginalLines([]);
           setEditOriginalReceipt(null);
+          setEditPaymentNote("");
         }}
       >
         <form
@@ -1442,13 +1597,16 @@ export function UseInventoryPage() {
             e.preventDefault();
             if (!editId) return;
             try {
-              await saveModifiedReceiptDirect();
+              const savedReceiptId = await saveModifiedReceiptDirect();
               setEditOpen(false);
               setEditId(null);
               setEditOriginalLines([]);
               setEditOriginalReceipt(null);
-              await refreshReceipts();
+              setEditPaymentNote("");
               window.dispatchEvent(new CustomEvent("fixngo:inventory-changed"));
+              if (savedReceiptId) {
+                nav(`/receipt/${savedReceiptId}`);
+              }
             } catch (err: any) {
               setError(getApiErrorMessage(err, "Failed to save receipt changes"));
             }
@@ -1490,15 +1648,47 @@ export function UseInventoryPage() {
                   style={{ width: "100%" }}
                 />
               </div>
+              <div>
+                <div className="formLabel">Payment Status</div>
+                <select
+                  className="select"
+                  value={editPaymentStatus}
+                  onChange={(e) =>
+                    setEditPaymentStatus(e.target.value as "paid" | "unpaid" | "other")
+                  }
+                  style={{ width: "100%" }}
+                >
+                  <option value="paid">Paid</option>
+                  <option value="unpaid">Unpaid</option>
+                  <option value="other">Other</option>
+                </select>
+                {editPaymentStatus === "other" ? (
+                  <div style={{ marginTop: 2 }}>
+                    <input
+                      className="input"
+                      value={editPaymentNote}
+                      onChange={(e) => setEditPaymentNote(e.target.value)}
+                      placeholder="Reason for reference only"
+                      style={{ width: "100%" }}
+                    />
+                    <div className="muted" style={{ marginTop: 2, fontSize: 10, lineHeight: 1.05 }}>
+                      Saved with the receipt, but not printed on the cash bill PDF.
+                    </div>
+                  </div>
+                ) : null}
+              </div>
             </div>
 
-            <div className="hr" />
+            <div className="hr" style={{ marginTop: 0, marginBottom: 0 }} />
 
-            <div className="muted" style={{ textAlign: "center" }}>
+            <div
+              className="muted"
+              style={{ textAlign: "center", marginBottom: 0, fontSize: 10, lineHeight: 1.05 }}
+            >
               You can edit all receipt details, items, quantities, and prices.
             </div>
 
-            <div className="tableWrap receiptModifyTableWrap" style={{ marginTop: 10 }}>
+            <div className="tableWrap receiptModifyTableWrap" style={{ marginTop: -6 }}>
               <table style={{ minWidth: 1100 }}>
                 <thead>
                   <tr>
@@ -1581,26 +1771,42 @@ export function UseInventoryPage() {
                               ))}
                             </select>
                           ) : l.type === "spare_part" ? (
-                            <select
-                              className="select"
-                              value={l.spare_part_id ?? ""}
+                            <input
+                              className="input"
+                              placeholder="Type what you want to add"
+                              value={l.description ?? ""}
                               onChange={(e) => {
-                                const nextId = e.target.value;
+                                const nextValue = e.target.value;
+                                if (
+                                  nextValue &&
+                                  hasDuplicateEditBillItem(
+                                    {
+                                      id: l.id,
+                                      type: "spare_part",
+                                      description: nextValue,
+                                      qty: l.qty,
+                                      unit_price: l.unit_price
+                                    },
+                                    l.id
+                                  )
+                                ) {
+                                  setError("The same spare part cannot appear more than once on the bill.");
+                                  return;
+                                }
                                 setEditLines((prev) =>
                                   prev.map((x) =>
-                                    x.id === l.id ? { ...x, spare_part_id: nextId } : x
+                                    x.id === l.id
+                                      ? {
+                                          ...x,
+                                          description: nextValue,
+                                          spare_part_id: undefined
+                                        }
+                                      : x
                                   )
                                 );
                               }}
                               style={{ width: "100%" }}
-                            >
-                              <option value="">Choose spare part...</option>
-                              {spareParts.map((i) => (
-                                <option key={i.id} value={i.id}>
-                                  {sparePartLabel(i)}
-                                </option>
-                              ))}
-                            </select>
+                            />
                           ) : (
                             <input
                               className="input"
@@ -1732,4 +1938,3 @@ export function UseInventoryPage() {
     </div>
   );
 }
-

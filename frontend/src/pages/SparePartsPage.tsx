@@ -118,6 +118,20 @@ export function SparePartsPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    const handleInventoryChanged = () => {
+      void load();
+    };
+    window.addEventListener("fixngo:inventory-changed", handleInventoryChanged as EventListener);
+    return () => {
+      window.removeEventListener(
+        "fixngo:inventory-changed",
+        handleInventoryChanged as EventListener
+      );
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCompany, filterCodeOrName]);
+
 // const lowStockCount = useMemo(
   //   () => rows.filter((r) => r.stock_quantity < LOW_STOCK_THRESHOLD).length,
   //   [rows]
@@ -207,7 +221,7 @@ export function SparePartsPage() {
               <tbody>
                 {rows.map((r) => {
 // const low = r.stock_quantity < LOW_STOCK_THRESHOLD;
-                  const qtyText = rowAddQty[r.id] ?? "1";
+// const qtyText = rowAddQty[r.id] ?? "1";
                   const dateIssuedValue =
                     rowDateIssued[r.id] ?? r.date_issued ?? "";
                   const paymentValue =

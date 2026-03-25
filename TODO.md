@@ -1,15 +1,24 @@
-# Fix_n_go Task Progress
+# Fix UseInventoryPage.tsx Errors - TODO
 
-## Current Task: Fix Sales/Inventory errors + cash bill status + refinements
+## Plan Steps:
+1. ✅ [Complete] Create `frontend/src/types/receipt.ts` with extracted types (InventoryItem, SparePartItem, ReceiptLine, ReceiptDetail, ReceiptEditOriginalLine, ReceiptEditOriginalReceipt).  
+2. ✅ [Complete] Refactor `frontend/src/pages/UseInventoryPage.tsx`:
+   - Import new types.
+   - Fix table dropdowns to use full `items`/`spareParts` lists consistently.
+   - Remove duplicate `setItemSearch("")` calls.
+   - Update UI titles to "Use Inventory" instead of "Receipts".
+   - Add `payment_status` to receipts insert (already present).
+3. 🔄 Run `cd frontend && npm run build` to verify no TS errors.
 
-### DONE ✅
-- [x] 1. Original fixes (InventoryPage, payment_status, SalesPage)
-- [x] 2. **NEW: Inventory no duplicates**
-- [x] 3. **NEW: SparePartsPage simplified** (no low stock, no increment btn, "Quantity")
+   - Import new types.
+   - Fix table dropdowns to use full `items`/`spareParts` lists consistently.
+   - Remove duplicate `setItemSearch("")` calls.
+   - Update UI titles to "Use Inventory" instead of "Receipts".
+   - Add `payment_status` to receipts insert.
+3. Run `cd frontend && npm run build` to verify no TS errors.
+4. Test functionality (manual: add items, submit receipt, check stock deduction).
+5. Update this TODO.md with progress.
+6. attempt_completion when done.
 
-### Status
-**Local working perfect!** 🎉
+Current: Starting step 1.
 
-**Vercel:** Merge PR → auto-deploy: https://github.com/AddieRanee/fix-n-go/pull/new/blackboxai/fix-sales-inventory-cashbill-status
-
-**Test:** localhost:5173 → all good

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { Link, useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { formatMYR } from "../lib/money";
 import { requireSupabase } from "../lib/supabase";
 import { getApiErrorMessage } from "../lib/errors";
@@ -47,6 +47,7 @@ type ReceiptLine = {
 
 export function ReceiptPage() {
   const { id } = useParams();
+  const navigate = useNavigate();
   const [legacyTx, setLegacyTx] = useState<LegacyTransaction | null>(null);
   const [receipt, setReceipt] = useState<Receipt | null>(null);
   const [lines, setLines] = useState<ReceiptLine[]>([]);
@@ -337,9 +338,13 @@ export function ReceiptPage() {
             >
               {pdfBusy ? "Preparing..." : "Print"}
             </button>
-            <Link className="button" to="/use">
-              New Receipt
-            </Link>
+            <button
+              className="button"
+              type="button"
+              onClick={() => navigate("/use")}
+            >
+              Back to Cash Bill
+            </button>
           </div>
           {!receipt && !legacyTx ? (
             <div className="muted">Loading...</div>
