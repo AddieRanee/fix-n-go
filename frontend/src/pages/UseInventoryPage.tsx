@@ -626,12 +626,18 @@ function addQuickItem(selection: string) {
         if (line.line_type === "inventory" && line.inventory_item_code) {
           const itemCode = String(line.inventory_item_code).trim();
           if (!itemCode) continue;
-          const { data: inv, error: invErr } = await supabase
+          const { data: invRows, error: invErr } = await supabase
             .from("inventory")
             .select("stock_quantity")
             .eq("item_code", itemCode)
-            .single();
+            .limit(1);
           if (invErr) throw invErr;
+          const inv = invRows?.[0];
+          if (!inv) {
+            // Older test receipts can point at inventory rows that no longer exist.
+            // In that case we skip the rollback and still allow the receipt delete.
+            continue;
+          }
           inventoryRollbacks.push({
             item_code: itemCode,
             stock_quantity: Number(inv?.stock_quantity ?? 0)
@@ -646,12 +652,18 @@ function addQuickItem(selection: string) {
         if (line.line_type === "spare_part" && line.spare_part_id) {
           const sparePartId = String(line.spare_part_id).trim();
           if (!sparePartId) continue;
-          const { data: sp, error: spErr } = await supabase
+          const { data: spRows, error: spErr } = await supabase
             .from("spare_parts")
             .select("stock_quantity")
             .eq("id", sparePartId)
-            .single();
+            .limit(1);
           if (spErr) throw spErr;
+          const sp = spRows?.[0];
+          if (!sp) {
+            // Legacy receipts may reference spare parts that were deleted during testing.
+            // We can still delete the receipt even if there is no stock row to restore.
+            continue;
+          }
           spareRollbacks.push({
             id: sparePartId,
             stock_quantity: Number(sp?.stock_quantity ?? 0)
