@@ -14,7 +14,7 @@ const InventoryCreateSchema = z.object({
   item_code: z.string().min(1),
   item_name: z.string().min(1),
   category: z.string().min(1),
-  stock_quantity: z.coerce.number().int().min(0),
+  stock_quantity: z.coerce.number().min(0),
   original_price: z.coerce.number().min(0),
   selling_price: z.coerce.number().min(0),
   low_stock_threshold: z.coerce.number().int().min(0).optional(),
@@ -23,7 +23,7 @@ const InventoryCreateSchema = z.object({
 
 const InventoryStockSchema = z.object({
   item_code: z.string().min(1),
-  add_quantity: z.coerce.number().int().positive(),
+  add_quantity: z.coerce.number().positive(),
   original_price: z.coerce.number().min(0).optional(),
   selling_price: z.coerce.number().min(0).optional()
 });
@@ -32,7 +32,7 @@ const InventoryUpdateSchema = z.object({
   item_code: z.string().min(1),
   item_name: z.string().min(1),
   category: z.string().min(1),
-  stock_quantity: z.coerce.number().int().min(0),
+  stock_quantity: z.coerce.number().min(0),
   original_price: z.coerce.number().min(0).optional(),
   selling_price: z.coerce.number().min(0).optional(),
   low_stock_threshold: z.coerce.number().int().min(0).optional(),
@@ -45,7 +45,7 @@ const UseInventorySchema = z.object({
   staff_name: z.string().optional(),
   service_description: z.string().optional(),
   item_code: z.string().min(1),
-  quantity_used: z.coerce.number().int().positive()
+  quantity_used: z.coerce.number().positive()
 });
 
 export function inventoryRouter(ctx: Ctx) {

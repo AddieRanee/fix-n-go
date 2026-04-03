@@ -10,7 +10,7 @@ const SparePartCreateSchema = z.object({
   item_name: z.string().optional(),
   category: z.string().optional(),
   company: z.string().optional(),
-  stock_quantity: z.coerce.number().int().min(0),
+  stock_quantity: z.coerce.number().min(0),
   original_price: z.coerce.number().min(0),
   selling_price: z.coerce.number().min(0),
   low_stock_threshold: z.coerce.number().int().min(0).optional(),
@@ -22,7 +22,7 @@ const SparePartStockSchema = z
   .object({
     id: z.string().uuid().optional(),
     item_code: z.string().optional(),
-    add_quantity: z.coerce.number().int().positive(),
+    add_quantity: z.coerce.number().positive(),
     original_price: z.coerce.number().min(0).optional(),
     selling_price: z.coerce.number().min(0).optional(),
     company: z.string().optional()
@@ -37,7 +37,7 @@ const SparePartUpdateSchema = z.object({
   item_name: z.string().optional(),
   category: z.string().optional(),
   company: z.string().optional(),
-  stock_quantity: z.coerce.number().int().min(0),
+  stock_quantity: z.coerce.number().min(0),
   original_price: z.coerce.number().min(0).optional(),
   selling_price: z.coerce.number().min(0).optional(),
   low_stock_threshold: z.coerce.number().int().min(0).optional(),
@@ -51,7 +51,7 @@ const UseSparePartSchema = z.object({
   staff_name: z.string().optional(),
   service_description: z.string().optional(),
   spare_part_id: z.string().uuid(),
-  quantity_used: z.coerce.number().int().positive()
+  quantity_used: z.coerce.number().positive()
 });
 
 function normalizeTextOrNull(value: unknown): string | null {

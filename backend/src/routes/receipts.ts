@@ -10,7 +10,7 @@ const ReceiptLineSchema = z.object({
   item_code: z.string().optional(), // inventory
   spare_part_id: z.string().uuid().optional(), // spare parts
   description: z.string().optional(), // service/custom
-  qty: z.coerce.number().int().positive().optional(),
+  qty: z.coerce.number().positive().optional(),
   unit_price: z.coerce.number().min(0).optional()
 });
 

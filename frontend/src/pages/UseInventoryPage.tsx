@@ -569,7 +569,7 @@ function addQuickItem(selection: string) {
     return lines.reduce((sum, l) => {
       const unit = Number((l.unit_price ?? "").trim());
       const add = (() => {
-        const qty = l.qty || 1;
+        const qty = Number.isFinite(l.qty) ? l.qty : 0;
         if (Number.isFinite(unit)) return unit * qty;
         if (l.type === "inventory" && l.item_code) {
           const it = items.find((i) => i.item_code === l.item_code);
@@ -1224,7 +1224,7 @@ function addQuickItem(selection: string) {
                   <tbody>
                     {lines.map((l) => {
                       const unit = Number((l.unit_price ?? "").trim());
-                      const qty = l.qty || 1;
+                      const qty = Number.isFinite(l.qty) ? l.qty : 0;
                       const lineTotal = (() => {
                         if (Number.isFinite(unit)) return unit * qty;
                         if (l.type === "inventory" && l.item_code) {
@@ -1357,18 +1357,18 @@ function addQuickItem(selection: string) {
                             )}
                           </td>
                           <td>
-                            <input
+                          <input
                               className="input"
                               type="number"
-                              min={1}
+                              min={0.01}
+                              step="0.01"
+                              inputMode="decimal"
                               value={l.qty}
                               disabled={submitting}
                               onChange={(e) => {
                                 const v = Number(e.target.value);
                                 setLines((prev) =>
-                                  prev.map((x) =>
-                                    x.id === l.id ? { ...x, qty: v } : x
-                                  )
+                                  prev.map((x) => (x.id === l.id ? { ...x, qty: v } : x))
                                 );
                               }}
                               onFocus={(e) => e.currentTarget.select()}
@@ -1838,7 +1838,9 @@ function addQuickItem(selection: string) {
                           <input
                             className="input"
                             type="number"
-                            min={1}
+                            min={0.01}
+                            step="0.01"
+                            inputMode="decimal"
                             value={l.qty}
                             onChange={(e) => {
                               const v = Number(e.target.value);
@@ -1846,6 +1848,7 @@ function addQuickItem(selection: string) {
                                 prev.map((x) => (x.id === l.id ? { ...x, qty: v } : x))
                               );
                             }}
+                            onFocus={(e) => e.currentTarget.select()}
                             onWheel={(e) => (e.currentTarget as HTMLInputElement).blur()}
                           />
                         </td>
