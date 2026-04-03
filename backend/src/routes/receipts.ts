@@ -167,38 +167,42 @@ export function receiptsRouter(ctx: Ctx) {
             if (lineErr) throw lineErr;
           } else if (line.type === "spare_part") {
             const sparePartId = line.spare_part_id ?? "";
-            if (!sparePartId) throw new Error("spare_part_id is required");
-
             const qty = line.qty ?? 1;
-            const spRes = await ctx.supabase
-              .from("spare_parts")
-              .select("id,item_code,item_name,stock_quantity,price")
-              .eq("id", sparePartId)
-              .single();
-            if (spRes.error) throw spRes.error;
-            if (!spRes.data) throw new Error(`spare_part id not found: ${sparePartId}`);
-            if (spRes.data.stock_quantity < qty) {
-              throw new Error(
-                `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (have ${spRes.data.stock_quantity}, need ${qty})`
-              );
-            }
-
-            const nextQty = spRes.data.stock_quantity - qty;
-            const { error: updErr } = await ctx.supabase
-              .from("spare_parts")
-              .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
-              .eq("id", sparePartId);
-            if (updErr) throw updErr;
-            sparePartUpdates.push({ id: sparePartId, stock_quantity: spRes.data.stock_quantity });
-
-            const { error: lineErr } = await ctx.supabase.from("receipt_lines").insert({
+            const linePayload: Record<string, unknown> = {
               receipt_id: receiptId,
               line_type: "spare_part",
-              spare_part_id: sparePartId,
-              description: spRes.data.item_name ?? spRes.data.item_code ?? "Blank",
+              spare_part_id: sparePartId || null,
+              description: sparePartId ? null : (line.description ?? "").trim() || "Blank",
               quantity: qty,
-              unit_price: line.unit_price ?? spRes.data.price ?? null
-            });
+              unit_price: line.unit_price ?? null
+            };
+
+            if (sparePartId) {
+              const spRes = await ctx.supabase
+                .from("spare_parts")
+                .select("id,item_code,item_name,stock_quantity,price")
+                .eq("id", sparePartId)
+                .single();
+              if (spRes.error) throw spRes.error;
+              if (!spRes.data) throw new Error(`spare_part id not found: ${sparePartId}`);
+              if (spRes.data.stock_quantity < qty) {
+                throw new Error(
+                  `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (have ${spRes.data.stock_quantity}, need ${qty})`
+                );
+              }
+
+              const nextQty = spRes.data.stock_quantity - qty;
+              const { error: updErr } = await ctx.supabase
+                .from("spare_parts")
+                .update({ stock_quantity: nextQty, last_updated: new Date().toISOString() })
+                .eq("id", sparePartId);
+              if (updErr) throw updErr;
+              sparePartUpdates.push({ id: sparePartId, stock_quantity: spRes.data.stock_quantity });
+              linePayload.description = spRes.data.item_name ?? spRes.data.item_code ?? "Blank";
+              linePayload.unit_price = line.unit_price ?? spRes.data.price ?? null;
+            }
+
+            const { error: lineErr } = await ctx.supabase.from("receipt_lines").insert(linePayload);
             if (lineErr) throw lineErr;
           } else if (line.type === "service" || line.type === "custom") {
             const { error: lineErr } = await ctx.supabase.from("receipt_lines").insert({
@@ -415,7 +419,7 @@ export function receiptsRouter(ctx: Ctx) {
         inventory_item_code: l.type === "inventory" ? (l.item_code ?? "").trim() : null,
         spare_part_id: l.type === "spare_part" ? l.spare_part_id ?? null : null,
         description:
-          l.type === "service" || l.type === "custom"
+          l.type === "service" || l.type === "custom" || l.type === "spare_part"
             ? (l.description ?? "").trim() || null
             : null,
         quantity: l.qty ?? 1,

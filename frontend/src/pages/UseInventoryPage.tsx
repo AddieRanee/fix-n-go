@@ -267,18 +267,6 @@ function addQuickItem(selection: string) {
     return items.find((i) => i.item_code === code)?.item_name ?? "";
   }
 
-  function findExistingSparePart(nameOrCode?: string | null) {
-    const key = (nameOrCode ?? "").trim().toLowerCase();
-    if (!key) return null;
-    return (
-      spareParts.find((i) =>
-        [i.id, i.item_code ?? "", i.item_name ?? ""].some((value) =>
-          value.trim().toLowerCase() === key
-        )
-      ) ?? null
-    );
-  }
-
   async function refreshNextRecNo(supabase = requireSupabase()) {
     try {
       const lastRec = await supabase
@@ -422,59 +410,45 @@ function addQuickItem(selection: string) {
           let sparePartId = (l.spare_part_id ?? "").trim();
           const sparePartName = (l.description ?? "").trim();
 
-          if (!sparePartId) {
-            if (!sparePartName) throw new Error("spare part name is required");
-            const existing = findExistingSparePart(sparePartName);
-            if (existing) {
-              sparePartId = existing.id;
-            } else {
-              const createdPart = await supabase
-                .from("spare_parts")
-                .insert({
-                  item_code: null,
-                  item_name: sparePartName,
-                  category: null,
-                  company: null,
-                  stock_quantity: qty,
-                  price: unit_price ?? 0,
-                  payment_status: "unpaid",
-                  date_issued: null,
-                  last_updated: new Date().toISOString()
-                })
-                .select("id,item_code,item_name,company,stock_quantity,price")
-                .single();
-              if (createdPart.error) throw createdPart.error;
-              sparePartId = createdPart.data.id as string;
-              setSpareParts((prev) => [createdPart.data, ...prev]);
-            }
+          if (sparePartId) {
+            const spRes = await supabase
+              .from("spare_parts")
+              .select("id,item_code,item_name,company,stock_quantity,price")
+              .eq("id", sparePartId)
+              .single();
+            if (spRes.error) throw spRes.error;
+            if (!spRes.data) throw new Error(`spare_part not found: ${sparePartId}`);
+            if (spRes.data.stock_quantity < qty) throw new Error(
+              `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (${spRes.data.stock_quantity} < ${qty})`
+            );
+
+            spareRollbacks.push({ id: sparePartId, stock_quantity: spRes.data.stock_quantity });
+
+            const { error: updErr } = await supabase
+              .from("spare_parts")
+              .update({ stock_quantity: spRes.data.stock_quantity - qty, last_updated: new Date().toISOString() })
+              .eq("id", sparePartId);
+            if (updErr) throw updErr;
+
+            const { error: lineErr } = await supabase.from("receipt_lines").insert({
+              receipt_id: receiptId,
+              line_type: "spare_part",
+              spare_part_id: sparePartId,
+              description: spRes.data.item_name ?? spRes.data.item_code ?? "Blank",
+              quantity: qty,
+              unit_price: unit_price ?? spRes.data.price ?? null
+            });
+            if (lineErr) throw lineErr;
+            continue;
           }
-
-          const spRes = await supabase
-            .from("spare_parts")
-            .select("id,item_code,item_name,company,stock_quantity,price")
-            .eq("id", sparePartId)
-            .single();
-          if (spRes.error) throw spRes.error;
-          if (!spRes.data) throw new Error(`spare_part not found: ${sparePartId}`);
-          if (spRes.data.stock_quantity < qty) throw new Error(
-            `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (${spRes.data.stock_quantity} < ${qty})`
-          );
-
-          spareRollbacks.push({ id: sparePartId, stock_quantity: spRes.data.stock_quantity });
-
-          const { error: updErr } = await supabase
-            .from("spare_parts")
-            .update({ stock_quantity: spRes.data.stock_quantity - qty, last_updated: new Date().toISOString() })
-            .eq("id", sparePartId);
-          if (updErr) throw updErr;
 
           const { error: lineErr } = await supabase.from("receipt_lines").insert({
             receipt_id: receiptId,
             line_type: "spare_part",
-            spare_part_id: sparePartId,
-            description: spRes.data.item_name ?? spRes.data.item_code ?? "Blank",
+            spare_part_id: null,
+            description: sparePartName || "Blank",
             quantity: qty,
-            unit_price: unit_price ?? spRes.data.price ?? null
+            unit_price: unit_price ?? null
           });
           if (lineErr) throw lineErr;
           continue;
@@ -694,7 +668,6 @@ function addQuickItem(selection: string) {
     const originalLines = editOriginalLines;
     const originalLineSnapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[] = [];
     const appliedLineSnapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[] = [];
-    const createdSparePartIds: string[] = [];
 
     const restoreSnapshots = async (
       snapshots: { kind: "inventory" | "spare_part"; id: string; stock_quantity: number }[]
@@ -857,69 +830,54 @@ function addQuickItem(selection: string) {
           let sparePartId = (l.spare_part_id ?? "").trim();
           const sparePartName = (l.description ?? "").trim();
 
-          if (!sparePartId) {
-            if (!sparePartName) throw new Error("spare part name is required");
-            const existingSparePart = findExistingSparePart(sparePartName);
-            if (existingSparePart) {
-              sparePartId = existingSparePart.id;
-            } else {
-              const createdPart = await supabase
-                .from("spare_parts")
-                .insert({
-                  item_code: null,
-                  item_name: sparePartName,
-                  category: "General",
-                  company: null,
-                  stock_quantity: qty,
-                  price: l.unit_price ?? 0,
-                  payment_status: "unpaid",
-                  date_issued: null,
-                  last_updated: new Date().toISOString()
-                })
-                .select("id,item_code,item_name,company,stock_quantity,price")
-                .single();
-              if (createdPart.error) throw createdPart.error;
-              sparePartId = String(createdPart.data.id);
-              createdSparePartIds.push(sparePartId);
-              setSpareParts((prev) => [createdPart.data as SparePartItem, ...prev]);
+          if (sparePartId) {
+            const spRes = await supabase
+              .from("spare_parts")
+              .select("id,item_code,item_name,stock_quantity,price")
+              .eq("id", sparePartId)
+              .single();
+            if (spRes.error) throw spRes.error;
+            if (!spRes.data) throw new Error(`spare_part id not found: ${sparePartId}`);
+            if (spRes.data.stock_quantity < qty) {
+              throw new Error(
+                `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (have ${spRes.data.stock_quantity}, need ${qty})`
+              );
             }
+
+            appliedLineSnapshots.push({
+              kind: "spare_part",
+              id: sparePartId,
+              stock_quantity: spRes.data.stock_quantity
+            });
+
+            const { error: updErr } = await supabase
+              .from("spare_parts")
+              .update({
+                stock_quantity: spRes.data.stock_quantity - qty,
+                last_updated: new Date().toISOString()
+              })
+              .eq("id", sparePartId);
+            if (updErr) throw updErr;
+
+            const { error: insErr } = await supabase.from("receipt_lines").insert({
+              receipt_id: receiptId,
+              line_type: "spare_part",
+              spare_part_id: sparePartId,
+              description: spRes.data.item_name ?? spRes.data.item_code ?? "Blank",
+              quantity: qty,
+              unit_price: l.unit_price ?? spRes.data.price ?? null
+            });
+            if (insErr) throw insErr;
+            continue;
           }
-
-          const spRes = await supabase
-            .from("spare_parts")
-            .select("id,item_code,item_name,stock_quantity,price")
-            .eq("id", sparePartId)
-            .single();
-          if (spRes.error) throw spRes.error;
-          if (!spRes.data) throw new Error(`spare_part id not found: ${sparePartId}`);
-          if (spRes.data.stock_quantity < qty) {
-            throw new Error(
-              `insufficient stock: ${spRes.data.item_code ?? spRes.data.id} (have ${spRes.data.stock_quantity}, need ${qty})`
-            );
-          }
-
-          appliedLineSnapshots.push({
-            kind: "spare_part",
-            id: sparePartId,
-            stock_quantity: spRes.data.stock_quantity
-          });
-
-          const { error: updErr } = await supabase
-            .from("spare_parts")
-            .update({
-              stock_quantity: spRes.data.stock_quantity - qty,
-              last_updated: new Date().toISOString()
-            })
-            .eq("id", sparePartId);
-          if (updErr) throw updErr;
 
           const { error: insErr } = await supabase.from("receipt_lines").insert({
             receipt_id: receiptId,
             line_type: "spare_part",
-            spare_part_id: sparePartId,
-            description: spRes.data.item_name ?? spRes.data.item_code ?? "Blank",
+            spare_part_id: null,
+            description: sparePartName || "Blank",
             quantity: qty,
-            unit_price: l.unit_price ?? spRes.data.price ?? null
+            unit_price: l.unit_price ?? null
           });
           if (insErr) throw insErr;
           continue;
@@ -950,10 +908,6 @@ function addQuickItem(selection: string) {
     } catch (err) {
       await restoreSnapshots(appliedLineSnapshots);
       await supabase.from("receipt_lines").delete().eq("receipt_id", receiptId);
-      if (createdSparePartIds.length) {
-        await supabase.from("spare_parts").delete().in("id", createdSparePartIds);
-        setSpareParts((prev) => prev.filter((part) => !createdSparePartIds.includes(part.id)));
-      }
 
         const reinserts = originalLines.map((l) => ({
         receipt_id: receiptId,
