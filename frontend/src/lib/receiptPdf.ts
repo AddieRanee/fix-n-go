@@ -15,6 +15,8 @@ export type ReceiptPdfData = {
   numberPlate: string;
   staffName: string;
   dateLabel: string;
+  paymentMethod?: "cash" | "bank" | "other";
+  bankNumber?: string;
   lines: ReceiptPdfLine[];
   total: number;
   note?: string;
@@ -26,6 +28,25 @@ type ReceiptPdfOptions = {
 
 function safeFilename(text: string) {
   return text.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim();
+}
+
+export function parseReceiptPaymentNote(note?: string | null) {
+  const trimmed = (note ?? "").trim();
+  if (!trimmed) {
+    return { paymentMethod: "cash" as const, bankNumber: "", otherNote: "" };
+  }
+  if (trimmed.toLowerCase().startsWith("bank:")) {
+    return {
+      paymentMethod: "bank" as const,
+      bankNumber: trimmed.slice(5).trim(),
+      otherNote: ""
+    };
+  }
+  return {
+    paymentMethod: "other" as const,
+    bankNumber: "",
+    otherNote: trimmed
+  };
 }
 
 export function buildReceiptPdfFilename(data: ReceiptPdfData) {
@@ -77,6 +98,25 @@ export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfO
   doc.setFont("helvetica", "bold");
   doc.text(data.staffName || "Blank", marginX, cursorY);
   doc.text(data.dateLabel || "-", pageWidth / 2, cursorY);
+
+  cursorY += 20;
+  doc.setTextColor(...labelColor);
+  doc.setFont("helvetica", "normal");
+  doc.text("Payment Method", marginX, cursorY);
+  if (data.paymentMethod === "bank") {
+    doc.text("Bank Number", pageWidth / 2, cursorY);
+  }
+  cursorY += 16;
+  doc.setTextColor(...textColor);
+  doc.setFont("helvetica", "bold");
+  doc.text(
+    data.paymentMethod ? data.paymentMethod.charAt(0).toUpperCase() + data.paymentMethod.slice(1) : "Cash",
+    marginX,
+    cursorY
+  );
+  if (data.paymentMethod === "bank") {
+    doc.text(data.bankNumber || "-", pageWidth / 2, cursorY);
+  }
 
   cursorY += 18;
   autoTable(doc, {

@@ -32,6 +32,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'item not found'; END IF;
   UPDATE public.inventory SET
     stock_quantity = stock_quantity + p_add_quantity,
+    price = COALESCE(p_selling_price, price),
     original_price = COALESCE(p_original_price, original_price),
     selling_price = COALESCE(p_selling_price, selling_price),
     low_stock_threshold = COALESCE(p_low_stock_threshold, low_stock_threshold),

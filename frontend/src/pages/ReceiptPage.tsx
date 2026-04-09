@@ -6,6 +6,7 @@ import { getApiErrorMessage } from "../lib/errors";
 import {
   buildReceiptPdfFilename,
   createReceiptPdfBlob,
+  parseReceiptPaymentNote,
   printReceiptPdfBlob,
   saveReceiptPdf
 } from "../lib/receiptPdf";
@@ -32,6 +33,8 @@ type Receipt = {
   job_id: string;
   number_plate: string;
   staff_name: string;
+  payment_status: "paid" | "unpaid" | "other" | null;
+  payment_note: string | null;
   created_at: string;
 };
 
@@ -59,6 +62,7 @@ export function ReceiptPage() {
   const [error, setError] = useState<string | null>(null);
   const [pdfBusy, setPdfBusy] = useState(false);
   const [pdfSaved, setPdfSaved] = useState(false);
+  const paymentInfo = receipt ? parseReceiptPaymentNote(receipt.payment_note) : null;
 
   function formatDDMM(date: Date) {
     return new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "2-digit" }).format(
@@ -79,6 +83,8 @@ export function ReceiptPage() {
       receiptNo: receipt ? String(receipt.rec_no ?? receipt.id) : legacyTx?.job_id || "",
       numberPlate: receipt ? receipt.number_plate : legacyTx?.number_plate || "",
       staffName: receipt ? receipt.staff_name || "Blank" : legacyTx?.staff_name || "Blank",
+      paymentMethod: paymentInfo?.paymentMethod,
+      bankNumber: paymentInfo?.bankNumber,
       dateLabel: receipt
         ? new Intl.DateTimeFormat("en-GB", {
             day: "2-digit",
@@ -170,7 +176,7 @@ export function ReceiptPage() {
         const supabase = requireSupabase();
         const receiptRes = await supabase
           .from("receipts")
-          .select("id,rec_no,number_plate,staff_name,created_at")
+          .select("id,rec_no,number_plate,staff_name,payment_status,payment_note,created_at")
           .eq("id", id)
           .maybeSingle();
         if (receiptRes.error) throw receiptRes.error;
@@ -416,6 +422,22 @@ export function ReceiptPage() {
                   <div className="muted">Date</div>
                   <div>{formatFullDate(new Date(receipt.created_at))}</div>
                 </div>
+              </div>
+              <div className="row">
+                <div style={{ flex: 1 }}>
+                  <div className="muted">Payment Method</div>
+                  <div>
+                    {paymentInfo?.paymentMethod === "bank"
+                      ? "Bank"
+                      : "Cash"}
+                  </div>
+                </div>
+                {paymentInfo?.paymentMethod === "bank" ? (
+                  <div style={{ flex: 1 }}>
+                    <div className="muted">Bank Number</div>
+                    <div>{paymentInfo.bankNumber || "-"}</div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="tableWrap receiptTableWrap">

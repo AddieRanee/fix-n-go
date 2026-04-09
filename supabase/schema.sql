@@ -379,8 +379,8 @@ begin
   for update;
 
   if not found then
-    insert into public.inventory (item_code, item_name, category, stock_quantity, original_price, selling_price, low_stock_threshold, last_updated)
-    values (trim(p_item_code), trim(p_item_name), trim(p_category), p_add_quantity, p_original_price, p_selling_price, 5, now())
+    insert into public.inventory (item_code, item_name, category, stock_quantity, price, original_price, selling_price, low_stock_threshold, last_updated)
+    values (trim(p_item_code), trim(p_item_name), trim(p_category), p_add_quantity, p_selling_price, p_original_price, p_selling_price, 5, now())
     returning * into v_item;
     return v_item;
   end if;
@@ -388,6 +388,7 @@ begin
   update public.inventory
   set item_name = trim(p_item_name),
       category = trim(p_category),
+      price = p_selling_price,
       original_price = p_original_price,
       selling_price = p_selling_price,
       stock_quantity = stock_quantity + p_add_quantity,
@@ -437,6 +438,7 @@ begin
 
   update public.inventory
   set stock_quantity = stock_quantity + p_add_quantity,
+      price = coalesce(p_selling_price, price),
       original_price = coalesce(p_original_price, original_price),
       selling_price = coalesce(p_selling_price, selling_price),
       low_stock_threshold = coalesce(p_low_stock_threshold, low_stock_threshold),

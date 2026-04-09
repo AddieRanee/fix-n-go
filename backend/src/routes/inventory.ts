@@ -56,7 +56,7 @@ export function inventoryRouter(ctx: Ctx) {
     let query = ctx.supabase
       .from("inventory")
       .select(
-        "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
+        "id,item_code,item_name,category,stock_quantity,original_price,selling_price,price,low_stock_threshold,date_issued,last_updated"
       )
       .order("created_at", { ascending: false, nullsFirst: false });
 
@@ -74,11 +74,12 @@ export function inventoryRouter(ctx: Ctx) {
         .from("inventory")
         .insert({
           ...body,
+          price: body.selling_price,
           date_issued: normalizeDateOrNull(body.date_issued),
           last_updated: new Date().toISOString()
         })
         .select(
-          "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
+          "id,item_code,item_name,category,stock_quantity,original_price,selling_price,price,low_stock_threshold,date_issued,last_updated"
         )
         .single();
       if (error) return res.status(400).json({ error: error.message });
@@ -108,19 +109,20 @@ export function inventoryRouter(ctx: Ctx) {
     try {
       const body = InventoryUpdateSchema.partial().parse(req.body);
       const { id } = req.params;
-        const patch: Record<string, unknown> = {
-          ...body,
-          last_updated: new Date().toISOString()
-        };
-        if ("date_issued" in body) patch.date_issued = normalizeDateOrNull(body.date_issued);
-        const { data, error } = await ctx.supabase
-          .from("inventory")
-          .update(patch)
-          .eq("id", id)
-          .select(
-            "id,item_code,item_name,category,stock_quantity,original_price,selling_price,low_stock_threshold,date_issued,last_updated"
-          )
-          .single();
+      const patch: Record<string, unknown> = {
+        ...body,
+        ...(body.selling_price !== undefined ? { price: body.selling_price } : {}),
+        last_updated: new Date().toISOString()
+      };
+      if ("date_issued" in body) patch.date_issued = normalizeDateOrNull(body.date_issued);
+      const { data, error } = await ctx.supabase
+        .from("inventory")
+        .update(patch)
+        .eq("id", id)
+        .select(
+          "id,item_code,item_name,category,stock_quantity,original_price,selling_price,price,low_stock_threshold,date_issued,last_updated"
+        )
+        .single();
       if (error) return res.status(400).json({ error: error.message });
       res.json({ item: data });
     } catch (err) {

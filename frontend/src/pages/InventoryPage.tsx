@@ -63,6 +63,7 @@ export function InventoryPage() {
           stock_quantity,
           original_price,
           selling_price,
+          price,
           low_stock_threshold,
           date_issued,
           last_updated
@@ -76,7 +77,12 @@ export function InventoryPage() {
       }
       const { data, error } = await query;
       if (error) throw error;
-      setItems((data ?? []) as InventoryItem[]);
+      setItems(
+        (data ?? []).map((item: any) => ({
+          ...item,
+          price: item.price ?? item.selling_price ?? 0
+        })) as InventoryItem[]
+      );
     } catch (err: any) {
       setError(err?.message ?? "Failed to load inventory");
     } finally {
@@ -198,13 +204,14 @@ export function InventoryPage() {
                             if ((item.date_issued ?? "") === dateIssuedValue) return;
                             try {
                               const supabase = requireSupabase();
-                              const { error } = await supabase
-                                .from("inventory")
-                                .update({
-                                  date_issued: dateIssuedValue || null,
-                                  last_updated: new Date().toISOString()
-                                })
-                                .eq("id", item.id);
+                                  const { error } = await supabase
+                                    .from("inventory")
+                                    .update({
+                                      date_issued: dateIssuedValue || null,
+                                      price: item.selling_price,
+                                      last_updated: new Date().toISOString()
+                                    })
+                                    .eq("id", item.id);
                               if (error) throw error;
                               await load();
                             } catch (err: any) {
@@ -273,10 +280,11 @@ export function InventoryPage() {
                                   .single();
                                 if (readErr) throw readErr;
                                 const nextQty = Number(current?.stock_quantity ?? 0) + qty;
-                                const { error } = await supabase
+                                  const { error } = await supabase
                                   .from("inventory")
                                   .update({
                                     stock_quantity: nextQty,
+                                    price: item.selling_price,
                                     selling_price: item.selling_price,
                                     last_updated: new Date().toISOString()
                                   })
@@ -311,6 +319,7 @@ export function InventoryPage() {
                                     .from("inventory")
                                     .update({
                                       date_issued: nextDate || null,
+                                      price: item.selling_price,
                                       last_updated: new Date().toISOString()
                                     })
                                     .eq("id", item.id);
@@ -407,6 +416,7 @@ export function InventoryPage() {
                       stock_quantity: form.stock_quantity,
                       original_price: form.original_price,
                       selling_price: form.selling_price,
+                      price: form.selling_price,
                       low_stock_threshold: form.low_stock_threshold,
                       date_issued: form.date_issued || null,
                       last_updated: new Date().toISOString()
@@ -434,6 +444,7 @@ export function InventoryPage() {
                     .from("inventory")
                     .update({
                       stock_quantity: nextQty,
+                      price: form.selling_price,
                       selling_price: form.selling_price,
                       last_updated: new Date().toISOString()
                     })
@@ -447,6 +458,7 @@ export function InventoryPage() {
                     stock_quantity: form.stock_quantity,
                     original_price: form.original_price,
                     selling_price: form.selling_price,
+                    price: form.selling_price,
                     low_stock_threshold: form.low_stock_threshold,
                     date_issued: form.date_issued || null,
                     last_updated: new Date().toISOString()
@@ -465,6 +477,7 @@ export function InventoryPage() {
                   .from("inventory")
                   .update({
                     stock_quantity: nextQty,
+                    price: form.selling_price,
                     selling_price: form.selling_price,
                     last_updated: new Date().toISOString()
                   })

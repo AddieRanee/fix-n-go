@@ -50,12 +50,23 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
   const [editStaffName, setEditStaffName] = useState("");
   const [editPaymentStatus, setEditPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
   const [editPaymentNote, setEditPaymentNote] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState<"cash" | "bank">("cash");
+  const [editBankNumber, setEditBankNumber] = useState("");
+  const [clearFromDate, setClearFromDate] = useState("");
+  const [clearToDate, setClearToDate] = useState("");
+  const [bulkClearing, setBulkClearing] = useState(false);
 
   const [jobId, setJobId] = useState(() => localStorage.getItem("receiptForm_jobId") || "J");
   const [numberPlate, setNumberPlate] = useState(() => localStorage.getItem("receiptForm_numberPlate") || "");
   const [staffName, setStaffName] = useState(() => localStorage.getItem("receiptForm_staffName") || "");
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
   const [otherReason, setOtherReason] = useState(() => localStorage.getItem("receiptForm_otherReason") || "");
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">(
+    () => (localStorage.getItem("receiptForm_paymentMethod") as "cash" | "bank" | null) || "cash"
+  );
+  const [bankNumber, setBankNumber] = useState(
+    () => localStorage.getItem("receiptForm_bankNumber") || ""
+  );
 
   const [lines, setLines] = useState<ReceiptLine[]>(() => {
     const savedLines = localStorage.getItem("receiptForm_lines");
@@ -74,6 +85,32 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
 
   function normalizeLookup(value?: string | null) {
     return (value ?? "").trim().toLowerCase();
+  }
+
+  function buildPaymentNote(
+    status: "paid" | "unpaid" | "other",
+    method: "cash" | "bank",
+    bankNo: string,
+    otherNote: string
+  ) {
+    if (status === "other") return otherNote.trim() || null;
+    if (method === "bank") return bankNo.trim() ? `bank:${bankNo.trim()}` : null;
+    return null;
+  }
+
+  function parsePaymentNote(note?: string | null) {
+    const trimmed = (note ?? "").trim();
+    if (!trimmed) {
+      return { method: "cash" as const, bankNumber: "", otherNote: "" };
+    }
+    if (trimmed.toLowerCase().startsWith("bank:")) {
+      return {
+        method: "bank" as const,
+        bankNumber: trimmed.slice(5).trim(),
+        otherNote: ""
+      };
+    }
+    return { method: "cash" as const, bankNumber: "", otherNote: trimmed };
   }
 
   function hasDuplicateBillItem(candidate: ReceiptLine, excludeId?: string) {
@@ -148,6 +185,14 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
   useEffect(() => {
     localStorage.setItem("receiptForm_otherReason", otherReason);
   }, [otherReason]);
+
+  useEffect(() => {
+    localStorage.setItem("receiptForm_paymentMethod", paymentMethod);
+  }, [paymentMethod]);
+
+  useEffect(() => {
+    localStorage.setItem("receiptForm_bankNumber", bankNumber);
+  }, [bankNumber]);
 
   useEffect(() => {
     localStorage.setItem("receiptForm_itemSearch", itemSearch);
@@ -298,6 +343,9 @@ function addQuickItem(selection: string) {
       setError("Vehicle Number Plate is required.");
       return null;
     }
+    if (paymentMethod === "bank" && !bankNumber.trim()) {
+      throw new Error("Bank number is required when payment method is Bank.");
+    }
 
     const seenInventory = new Set<string>();
     const seenSpareParts = new Set<string>();
@@ -326,7 +374,7 @@ function addQuickItem(selection: string) {
         number_plate: trimmedNumberPlate,
         staff_name: staffName.trim(),
         payment_status: paymentStatus,
-        payment_note: paymentStatus === "other" ? otherReason.trim() : null,
+        payment_note: buildPaymentNote(paymentStatus, paymentMethod, bankNumber, otherReason),
         created_by_id: createdById
       })
       .select("id")
@@ -566,8 +614,20 @@ function addQuickItem(selection: string) {
     setReceipts(rec.data ?? []);
   }
 
-  async function deleteReceiptDirect(id: string) {
+  async function deleteReceiptDirect(id: string, keepStock = false) {
     const supabase = requireSupabase();
+
+    if (keepStock) {
+      const { error: delLinesErr } = await supabase.from("receipt_lines").delete().eq("receipt_id", id);
+      if (delLinesErr) throw delLinesErr;
+
+      const { error: delErr } = await supabase.from("receipts").delete().eq("id", id);
+      if (delErr) throw delErr;
+
+      window.dispatchEvent(new CustomEvent("fixngo:inventory-changed"));
+      return;
+    }
+
     const linesRes = await supabase
       .from("receipt_lines")
       .select("line_type,inventory_item_code,spare_part_id,quantity")
@@ -659,8 +719,55 @@ function addQuickItem(selection: string) {
     }
   }
 
+  function toLocalDateKey(value: string) {
+    const date = new Date(value);
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }
+
+  async function clearReceiptsByDateRange() {
+    if (!clearFromDate || !clearToDate) {
+      alert("Please choose both a start date and an end date.");
+      return;
+    }
+
+    const from = clearFromDate <= clearToDate ? clearFromDate : clearToDate;
+    const to = clearFromDate <= clearToDate ? clearToDate : clearFromDate;
+    const targets = receipts.filter((r) => {
+      const receiptDate = toLocalDateKey(r.created_at);
+      return receiptDate >= from && receiptDate <= to;
+    });
+
+    if (!targets.length) {
+      alert("No receipts were found in that date range.");
+      return;
+    }
+
+    const ok = confirm(
+      `Clear ${targets.length} receipt(s) from ${from} to ${to} without restocking the used items?`
+    );
+    if (!ok) return;
+
+    setBulkClearing(true);
+    try {
+      for (const receipt of targets) {
+        await deleteReceiptDirect(receipt.id, true);
+      }
+      await refreshReceipts();
+    } catch (err: any) {
+      alert(getApiErrorMessage(err, "Failed to clear receipts"));
+    } finally {
+      setBulkClearing(false);
+    }
+  }
+
   async function saveModifiedReceiptDirect() {
     if (!editId) return null;
+    if (editPaymentMethod === "bank" && !editBankNumber.trim()) {
+      throw new Error("Bank number is required when payment method is Bank.");
+    }
 
     const supabase = requireSupabase();
     const receiptId = editId;
@@ -753,7 +860,12 @@ function addQuickItem(selection: string) {
           number_plate: editNumberPlate.trim(),
           staff_name: editStaffName.trim(),
           payment_status: editPaymentStatus,
-          payment_note: editPaymentStatus === "other" ? editPaymentNote.trim() : null
+          payment_note: buildPaymentNote(
+            editPaymentStatus,
+            editPaymentMethod,
+            editBankNumber,
+            editPaymentNote
+          )
         })
         .eq("id", receiptId);
       if (receiptUpdateErr) throw receiptUpdateErr;
@@ -980,7 +1092,10 @@ function addQuickItem(selection: string) {
     setEditNumberPlate(data.receipt.number_plate);
     setEditStaffName(data.receipt.staff_name ?? "");
     setEditPaymentStatus((data.receipt.payment_status ?? "paid") as "paid" | "unpaid" | "other");
-    setEditPaymentNote(data.receipt.payment_note ?? "");
+    const parsedPaymentNote = parsePaymentNote(data.receipt.payment_note);
+    setEditPaymentMethod(parsedPaymentNote.method);
+    setEditBankNumber(parsedPaymentNote.bankNumber);
+    setEditPaymentNote(parsedPaymentNote.otherNote);
     setEditOriginalLines(
       (data.lines ?? []).map((l) => ({
         line_type: l.line_type,
@@ -1407,6 +1522,39 @@ function addQuickItem(selection: string) {
                 ) : null}
               </div>
 
+              <div style={{ marginTop: 12 }}>
+                <div style={{ display: "flex", alignItems: "flex-end", gap: 12 }}>
+                  <div className="formLabel" style={{ marginBottom: 4 }}>
+                    Payment Method
+                  </div>
+                  <select
+                    className="select"
+                    style={{ minWidth: 140, fontSize: 14 }}
+                    value={paymentMethod}
+                    onChange={(e) => setPaymentMethod(e.target.value as "cash" | "bank")}
+                    disabled={submitting}
+                  >
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank</option>
+                  </select>
+                </div>
+                {paymentMethod === "bank" ? (
+                  <div style={{ marginTop: 8 }}>
+                    <input
+                      className="input"
+                      value={bankNumber}
+                      onChange={(e) => setBankNumber(e.target.value)}
+                      placeholder="Bank number"
+                      disabled={submitting}
+                      style={{ minWidth: 260 }}
+                    />
+                    <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
+                      This is saved with the receipt and auto-filled next time.
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+
               <div className="row" style={{ marginTop: 14, justifyContent: "flex-end", gap: 12 }}>
                 <button
                   className="button"
@@ -1461,6 +1609,43 @@ function addQuickItem(selection: string) {
           </div>
         </div>
         <div className="cardBody">
+          <div className="row" style={{ flexWrap: "wrap", gap: 12, marginBottom: 12, alignItems: "flex-end" }}>
+            <div>
+              <div className="formLabel" style={{ marginBottom: 4 }}>
+                From date
+              </div>
+              <input
+                className="input"
+                type="date"
+                value={clearFromDate}
+                onChange={(e) => setClearFromDate(e.target.value)}
+                disabled={bulkClearing}
+              />
+            </div>
+            <div>
+              <div className="formLabel" style={{ marginBottom: 4 }}>
+                To date
+              </div>
+              <input
+                className="input"
+                type="date"
+                value={clearToDate}
+                onChange={(e) => setClearToDate(e.target.value)}
+                disabled={bulkClearing}
+              />
+            </div>
+            <button
+              className="button buttonDanger"
+              type="button"
+              onClick={() => void clearReceiptsByDateRange()}
+              disabled={bulkClearing}
+            >
+              {bulkClearing ? "Clearing..." : "Clear Records Only"}
+            </button>
+            <div className="muted" style={{ fontSize: 12, maxWidth: 380 }}>
+              This deletes receipts in the selected date range without restocking inventory or spare parts.
+            </div>
+          </div>
           <div className="tableWrap">
             <table style={{ minWidth: 980 }}>
                   <thead>
@@ -1514,7 +1699,9 @@ function addQuickItem(selection: string) {
                           className="button buttonDanger"
                           type="button"
                           onClick={async () => {
-                            const ok = confirm("Are you sure you want to delete this receipt?");
+                            const ok = confirm(
+                              "Are you sure you want to delete this receipt and restock the used items?"
+                            );
                             if (!ok) return;
                             try {
                               await deleteReceiptDirect(r.id);
@@ -1524,7 +1711,25 @@ function addQuickItem(selection: string) {
                             }
                           }}
                         >
-                          Delete
+                          Delete & Restock
+                        </button>
+                        <button
+                          className="button buttonDanger"
+                          type="button"
+                          onClick={async () => {
+                            const ok = confirm(
+                              "Are you sure you want to delete this receipt without restocking the used items?"
+                            );
+                            if (!ok) return;
+                            try {
+                              await deleteReceiptDirect(r.id, true);
+                              await refreshReceipts();
+                            } catch (err: any) {
+                              alert(getApiErrorMessage(err, "Failed to delete receipt"));
+                            }
+                          }}
+                        >
+                          Clear Record Only
                         </button>
                       </div>
                     </td>
@@ -1639,6 +1844,32 @@ function addQuickItem(selection: string) {
                     />
                     <div className="muted" style={{ marginTop: 2, fontSize: 10, lineHeight: 1.05 }}>
                       Saved with the receipt, but not printed on the cash bill PDF.
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div>
+                <div className="formLabel">Payment Method</div>
+                <select
+                  className="select"
+                  value={editPaymentMethod}
+                  onChange={(e) => setEditPaymentMethod(e.target.value as "cash" | "bank")}
+                  style={{ width: "100%" }}
+                >
+                  <option value="cash">Cash</option>
+                  <option value="bank">Bank</option>
+                </select>
+                {editPaymentMethod === "bank" ? (
+                  <div style={{ marginTop: 2 }}>
+                    <input
+                      className="input"
+                      value={editBankNumber}
+                      onChange={(e) => setEditBankNumber(e.target.value)}
+                      placeholder="Bank number"
+                      style={{ width: "100%" }}
+                    />
+                    <div className="muted" style={{ marginTop: 2, fontSize: 10, lineHeight: 1.05 }}>
+                      Saved with the receipt and auto-filled next time.
                     </div>
                   </div>
                 ) : null}
