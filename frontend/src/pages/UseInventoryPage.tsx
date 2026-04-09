@@ -1251,7 +1251,7 @@ function addQuickItem(selection: string) {
               <div className="hr" />
 
               <div className="tableWrap">
-                <table style={{ minWidth: 980 }}>
+                <table className="fitTable" style={{ minWidth: 860 }}>
                   <thead>
                     <tr>
                       <th style={{ width: 140 }}>Type</th>
@@ -1603,7 +1603,7 @@ function addQuickItem(selection: string) {
             </div>
           </div>
           <div className="tableWrap">
-            <table style={{ minWidth: 980 }}>
+            <table className="fitTable" style={{ minWidth: 860 }}>
                   <thead>
                     <tr>
                       <th>Rec. No</th>

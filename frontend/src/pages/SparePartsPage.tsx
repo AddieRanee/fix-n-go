@@ -214,6 +214,13 @@ export function SparePartsPage() {
             </div>
           ) : null}
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <CompanyFolderManager companySuggestions={companySuggestions} />
+      </div>
+
+      <div className="card">
         <div className="cardBody">
           <div className="tableWrap">
             <table>
@@ -413,10 +420,6 @@ export function SparePartsPage() {
             </table>
           </div>
         </div>
-      </div>
-
-      <div className="card" style={{ marginTop: 14 }}>
-        <CompanyFolderManager companySuggestions={companySuggestions} />
       </div>
 
       <Modal
