@@ -168,9 +168,8 @@ export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfO
   const noteY = finalY + 40;
   doc.text(data.note || "Keep this receipt for your records", marginX, noteY);
   doc.setFontSize(9);
-  doc.text("Bank: 8605049382", marginX, noteY + 14);
-  doc.text("Cimb", marginX, noteY + 28);
-  doc.text("FIX & GO GARAGE", marginX, noteY + 42);
+  doc.text("FIX & GO GARAGE", marginX, noteY + 14);
+  doc.text("CIMB Bank: 8605049382", marginX, noteY + 28);
 
   if (options?.autoPrint) {
     doc.autoPrint({ variant: "non-conform" });

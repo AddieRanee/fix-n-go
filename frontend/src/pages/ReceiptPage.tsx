@@ -480,9 +480,8 @@ export function ReceiptPage() {
               </div>
               <div style={{ display: "grid", gap: 2, fontSize: 11, marginTop: 4 }}>
                 <div>Keep this receipt for your records</div>
-                <div>Bank: 8605049382</div>
-                <div>Cimb</div>
                 <div>FIX & GO GARAGE</div>
+                <div>CIMB Bank: 8605049382</div>
               </div>
             </div>
           ) : legacyTx ? (
@@ -558,9 +557,8 @@ export function ReceiptPage() {
               </div>
               <div style={{ display: "grid", gap: 2, fontSize: 11, marginTop: 4 }}>
                 <div>Keep this receipt for your records</div>
-                <div>Bank: 8605049382</div>
-                <div>Cimb</div>
                 <div>FIX & GO GARAGE</div>
+                <div>CIMB Bank: 8605049382</div>
               </div>
               <div className="row printOnly">
                 <div style={{ flex: 1 }}>
