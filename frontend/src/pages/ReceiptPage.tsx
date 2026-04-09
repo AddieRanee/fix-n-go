@@ -118,7 +118,7 @@ export function ReceiptPage() {
             ]
           : [],
       total: receipt ? total : legacyTx ? Number(legacyTx.total_price) : 0,
-      note: "Keep this receipt for your records."
+      note: "Keep this receipt for your records"
     };
   }
 
@@ -404,7 +404,10 @@ export function ReceiptPage() {
             <div className="muted">Loading...</div>
           ) : receipt ? (
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Fix n Go Garage</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO</div>
+              <div style={{ fontSize: 11, lineHeight: 1.2 }}>
+                202103371410 (PG0522795-T)
+              </div>
               <div style={{ fontSize: 12, lineHeight: 1.4, marginTop: 4 }}>
                 Address: 827, Jln Industri, Taman Bandar Baru Selatan, 31900 Kampar, Perak
                 <br />
@@ -475,10 +478,19 @@ export function ReceiptPage() {
                   <div style={{ fontWeight: 800 }}>{formatMYR(Number(total))}</div>
                 </div>
               </div>
+              <div style={{ display: "grid", gap: 2, fontSize: 11, marginTop: 4 }}>
+                <div>Keep this receipt for your records</div>
+                <div>Bank: 8605049382</div>
+                <div>Cimb</div>
+                <div>FIX & GO GARAGE</div>
+              </div>
             </div>
           ) : legacyTx ? (
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>Fix n Go Garage</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO</div>
+              <div style={{ fontSize: 11, lineHeight: 1.2 }}>
+                202103371410 (PG0522795-T)
+              </div>
               <div className="hr" />
               <div className="row printOnly">
                 <div style={{ flex: 1 }}>
@@ -543,6 +555,12 @@ export function ReceiptPage() {
                     {formatMYR(Number(legacyTx.total_price))}
                   </div>
                 </div>
+              </div>
+              <div style={{ display: "grid", gap: 2, fontSize: 11, marginTop: 4 }}>
+                <div>Keep this receipt for your records</div>
+                <div>Bank: 8605049382</div>
+                <div>Cimb</div>
+                <div>FIX & GO GARAGE</div>
               </div>
               <div className="row printOnly">
                 <div style={{ flex: 1 }}>

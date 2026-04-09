@@ -50,8 +50,7 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
   const [editStaffName, setEditStaffName] = useState("");
   const [editPaymentStatus, setEditPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
   const [editPaymentNote, setEditPaymentNote] = useState("");
-  const [editPaymentMethod, setEditPaymentMethod] = useState<"cash" | "bank">("cash");
-  const [editBankNumber, setEditBankNumber] = useState("");
+  const [editPaymentMethod, setEditPaymentMethod] = useState<"cash">("cash");
   const [clearFromDate, setClearFromDate] = useState("");
   const [clearToDate, setClearToDate] = useState("");
   const [bulkClearing, setBulkClearing] = useState(false);
@@ -61,12 +60,7 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
   const [staffName, setStaffName] = useState(() => localStorage.getItem("receiptForm_staffName") || "");
   const [paymentStatus, setPaymentStatus] = useState<"paid" | "unpaid" | "other">("paid");
   const [otherReason, setOtherReason] = useState(() => localStorage.getItem("receiptForm_otherReason") || "");
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "bank">(
-    () => (localStorage.getItem("receiptForm_paymentMethod") as "cash" | "bank" | null) || "cash"
-  );
-  const [bankNumber, setBankNumber] = useState(
-    () => localStorage.getItem("receiptForm_bankNumber") || ""
-  );
+  const [paymentMethod, setPaymentMethod] = useState<"cash">("cash");
 
   const [lines, setLines] = useState<ReceiptLine[]>(() => {
     const savedLines = localStorage.getItem("receiptForm_lines");
@@ -89,28 +83,19 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
 
   function buildPaymentNote(
     status: "paid" | "unpaid" | "other",
-    method: "cash" | "bank",
-    bankNo: string,
+    method: "cash",
     otherNote: string
   ) {
     if (status === "other") return otherNote.trim() || null;
-    if (method === "bank") return bankNo.trim() ? `bank:${bankNo.trim()}` : null;
     return null;
   }
 
   function parsePaymentNote(note?: string | null) {
     const trimmed = (note ?? "").trim();
     if (!trimmed) {
-      return { method: "cash" as const, bankNumber: "", otherNote: "" };
+      return { method: "cash" as const, otherNote: "" };
     }
-    if (trimmed.toLowerCase().startsWith("bank:")) {
-      return {
-        method: "bank" as const,
-        bankNumber: trimmed.slice(5).trim(),
-        otherNote: ""
-      };
-    }
-    return { method: "cash" as const, bankNumber: "", otherNote: trimmed };
+    return { method: "cash" as const, otherNote: trimmed };
   }
 
   function hasDuplicateBillItem(candidate: ReceiptLine, excludeId?: string) {
@@ -189,10 +174,6 @@ const [spareParts, setSpareParts] = useState<SparePartItem[]>([]);
   useEffect(() => {
     localStorage.setItem("receiptForm_paymentMethod", paymentMethod);
   }, [paymentMethod]);
-
-  useEffect(() => {
-    localStorage.setItem("receiptForm_bankNumber", bankNumber);
-  }, [bankNumber]);
 
   useEffect(() => {
     localStorage.setItem("receiptForm_itemSearch", itemSearch);
@@ -343,10 +324,6 @@ function addQuickItem(selection: string) {
       setError("Vehicle Number Plate is required.");
       return null;
     }
-    if (paymentMethod === "bank" && !bankNumber.trim()) {
-      throw new Error("Bank number is required when payment method is Bank.");
-    }
-
     const seenInventory = new Set<string>();
     const seenSpareParts = new Set<string>();
     for (const row of lines) {
@@ -374,7 +351,7 @@ function addQuickItem(selection: string) {
         number_plate: trimmedNumberPlate,
         staff_name: staffName.trim(),
         payment_status: paymentStatus,
-        payment_note: buildPaymentNote(paymentStatus, paymentMethod, bankNumber, otherReason),
+        payment_note: buildPaymentNote(paymentStatus, paymentMethod, otherReason),
         created_by_id: createdById
       })
       .select("id")
@@ -765,9 +742,6 @@ function addQuickItem(selection: string) {
 
   async function saveModifiedReceiptDirect() {
     if (!editId) return null;
-    if (editPaymentMethod === "bank" && !editBankNumber.trim()) {
-      throw new Error("Bank number is required when payment method is Bank.");
-    }
 
     const supabase = requireSupabase();
     const receiptId = editId;
@@ -863,7 +837,6 @@ function addQuickItem(selection: string) {
           payment_note: buildPaymentNote(
             editPaymentStatus,
             editPaymentMethod,
-            editBankNumber,
             editPaymentNote
           )
         })
@@ -1094,7 +1067,6 @@ function addQuickItem(selection: string) {
     setEditPaymentStatus((data.receipt.payment_status ?? "paid") as "paid" | "unpaid" | "other");
     const parsedPaymentNote = parsePaymentNote(data.receipt.payment_note);
     setEditPaymentMethod(parsedPaymentNote.method);
-    setEditBankNumber(parsedPaymentNote.bankNumber);
     setEditPaymentNote(parsedPaymentNote.otherNote);
     setEditOriginalLines(
       (data.lines ?? []).map((l) => ({
@@ -1531,28 +1503,12 @@ function addQuickItem(selection: string) {
                     className="select"
                     style={{ minWidth: 140, fontSize: 14 }}
                     value={paymentMethod}
-                    onChange={(e) => setPaymentMethod(e.target.value as "cash" | "bank")}
+                    onChange={(e) => setPaymentMethod(e.target.value as "cash")}
                     disabled={submitting}
                   >
                     <option value="cash">Cash</option>
-                    <option value="bank">Bank</option>
-                  </select>
-                </div>
-                {paymentMethod === "bank" ? (
-                  <div style={{ marginTop: 8 }}>
-                    <input
-                      className="input"
-                      value={bankNumber}
-                      onChange={(e) => setBankNumber(e.target.value)}
-                      placeholder="Bank number"
-                      disabled={submitting}
-                      style={{ minWidth: 260 }}
-                    />
-                    <div className="muted" style={{ marginTop: 4, fontSize: 12 }}>
-                      This is saved with the receipt and auto-filled next time.
-                    </div>
-                  </div>
-                ) : null}
+                </select>
+              </div>
               </div>
 
               <div className="row" style={{ marginTop: 14, justifyContent: "flex-end", gap: 12 }}>
@@ -1850,29 +1806,14 @@ function addQuickItem(selection: string) {
               </div>
               <div>
                 <div className="formLabel">Payment Method</div>
-                <select
-                  className="select"
-                  value={editPaymentMethod}
-                  onChange={(e) => setEditPaymentMethod(e.target.value as "cash" | "bank")}
-                  style={{ width: "100%" }}
-                >
+                  <select
+                    className="select"
+                    value={editPaymentMethod}
+                    onChange={(e) => setEditPaymentMethod(e.target.value as "cash")}
+                    style={{ width: "100%" }}
+                  >
                   <option value="cash">Cash</option>
-                  <option value="bank">Bank</option>
                 </select>
-                {editPaymentMethod === "bank" ? (
-                  <div style={{ marginTop: 2 }}>
-                    <input
-                      className="input"
-                      value={editBankNumber}
-                      onChange={(e) => setEditBankNumber(e.target.value)}
-                      placeholder="Bank number"
-                      style={{ width: "100%" }}
-                    />
-                    <div className="muted" style={{ marginTop: 2, fontSize: 10, lineHeight: 1.05 }}>
-                      Saved with the receipt and auto-filled next time.
-                    </div>
-                  </div>
-                ) : null}
               </div>
             </div>
 

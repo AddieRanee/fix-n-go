@@ -63,7 +63,12 @@ export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfO
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text("Fix n Go Garage", marginX, cursorY);
+  doc.text("FIX & GO", marginX, cursorY);
+
+  cursorY += 14;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.text("202103371410 (PG0522795-T)", marginX, cursorY);
 
   cursorY += 20;
   doc.setFont("helvetica", "normal");
@@ -160,7 +165,12 @@ export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfO
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  doc.text(data.note || "Keep this receipt for your records.", marginX, finalY + 40);
+  const noteY = finalY + 40;
+  doc.text(data.note || "Keep this receipt for your records", marginX, noteY);
+  doc.setFontSize(9);
+  doc.text("Bank: 8605049382", marginX, noteY + 14);
+  doc.text("Cimb", marginX, noteY + 28);
+  doc.text("FIX & GO GARAGE", marginX, noteY + 42);
 
   if (options?.autoPrint) {
     doc.autoPrint({ variant: "non-conform" });
