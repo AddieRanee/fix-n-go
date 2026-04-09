@@ -57,6 +57,133 @@ update public.spare_parts set price_increase = null where price_increase = 0;
 alter table public.receipts add column if not exists payment_status text default 'paid' check (payment_status in ('paid','unpaid','other'));
 alter table public.receipts add column if not exists payment_note text;
 
+create table if not exists public.spare_part_folders (
+  id uuid primary key default gen_random_uuid(),
+  company_name text not null,
+  company_slug text not null unique,
+  created_by_id uuid,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.spare_part_attachments (
+  id uuid primary key default gen_random_uuid(),
+  folder_id uuid not null references public.spare_part_folders(id) on delete cascade,
+  company_name text not null,
+  company_slug text not null,
+  original_name text not null,
+  storage_path text not null unique,
+  mime_type text not null,
+  file_size bigint not null default 0,
+  created_by_id uuid,
+  created_at timestamptz not null default now()
+);
+
+alter table public.spare_part_folders enable row level security;
+alter table public.spare_part_attachments enable row level security;
+
+drop policy if exists spare_part_folders_select_authenticated on public.spare_part_folders;
+create policy spare_part_folders_select_authenticated
+on public.spare_part_folders
+for select
+to authenticated
+using (true);
+
+drop policy if exists spare_part_folders_insert_authenticated on public.spare_part_folders;
+create policy spare_part_folders_insert_authenticated
+on public.spare_part_folders
+for insert
+to authenticated
+with check (true);
+
+drop policy if exists spare_part_folders_update_authenticated on public.spare_part_folders;
+create policy spare_part_folders_update_authenticated
+on public.spare_part_folders
+for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists spare_part_folders_delete_authenticated on public.spare_part_folders;
+create policy spare_part_folders_delete_authenticated
+on public.spare_part_folders
+for delete
+to authenticated
+using (true);
+
+drop policy if exists spare_part_attachments_select_authenticated on public.spare_part_attachments;
+create policy spare_part_attachments_select_authenticated
+on public.spare_part_attachments
+for select
+to authenticated
+using (true);
+
+drop policy if exists spare_part_attachments_insert_authenticated on public.spare_part_attachments;
+create policy spare_part_attachments_insert_authenticated
+on public.spare_part_attachments
+for insert
+to authenticated
+with check (true);
+
+drop policy if exists spare_part_attachments_update_authenticated on public.spare_part_attachments;
+create policy spare_part_attachments_update_authenticated
+on public.spare_part_attachments
+for update
+to authenticated
+using (true)
+with check (true);
+
+drop policy if exists spare_part_attachments_delete_authenticated on public.spare_part_attachments;
+create policy spare_part_attachments_delete_authenticated
+on public.spare_part_attachments
+for delete
+to authenticated
+using (true);
+
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values (
+  'spare-part-docs',
+  'spare-part-docs',
+  false,
+  52428800,
+  array['application/pdf', 'image/png', 'image/jpeg', 'image/webp']
+)
+on conflict (id) do update
+set
+  name = excluded.name,
+  public = excluded.public,
+  file_size_limit = excluded.file_size_limit,
+  allowed_mime_types = excluded.allowed_mime_types;
+
+drop policy if exists spare_part_docs_select_authenticated on storage.objects;
+create policy spare_part_docs_select_authenticated
+on storage.objects
+for select
+to authenticated
+using (bucket_id = 'spare-part-docs');
+
+drop policy if exists spare_part_docs_insert_authenticated on storage.objects;
+create policy spare_part_docs_insert_authenticated
+on storage.objects
+for insert
+to authenticated
+with check (bucket_id = 'spare-part-docs');
+
+drop policy if exists spare_part_docs_update_authenticated on storage.objects;
+create policy spare_part_docs_update_authenticated
+on storage.objects
+for update
+to authenticated
+using (bucket_id = 'spare-part-docs')
+with check (bucket_id = 'spare-part-docs');
+
+drop policy if exists spare_part_docs_delete_authenticated on storage.objects;
+create policy spare_part_docs_delete_authenticated
+on storage.objects
+for delete
+to authenticated
+using (bucket_id = 'spare-part-docs');
+
 create table if not exists public.transactions (
   id uuid primary key default gen_random_uuid(),
   job_id text not null,

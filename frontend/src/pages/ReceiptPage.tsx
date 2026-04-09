@@ -404,7 +404,7 @@ export function ReceiptPage() {
             <div className="muted">Loading...</div>
           ) : receipt ? (
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO GARAGE</div>
               <div style={{ fontSize: 11, lineHeight: 1.2 }}>
                 202103371410 (PG0522795-T)
               </div>
@@ -487,7 +487,7 @@ export function ReceiptPage() {
             </div>
           ) : legacyTx ? (
             <div style={{ display: "grid", gap: 10 }}>
-              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO</div>
+              <div style={{ fontWeight: 800, fontSize: 18 }}>FIX & GO GARAGE</div>
               <div style={{ fontSize: 11, lineHeight: 1.2 }}>
                 202103371410 (PG0522795-T)
               </div>

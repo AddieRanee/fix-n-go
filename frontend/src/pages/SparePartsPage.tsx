@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Modal } from "../components/Modal";
+import { CompanyFolderManager } from "../components/CompanyFolderManager";
 import { formatMYR } from "../lib/money";
 import { getApiErrorMessage } from "../lib/errors";
 import { requireSupabase } from "../lib/supabase";
@@ -70,6 +71,18 @@ export function SparePartsPage() {
     if (!Number.isFinite(form.price) || form.price < 0) return false;
     return true;
   }, [addMode, form, stockTargetId]);
+
+  const companySuggestions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          rows
+            .map((row) => row.company?.trim() || "")
+            .filter((company) => company.length > 0)
+        )
+      ),
+    [rows]
+  );
 
   function cellOrBlank(value: string | null | undefined) {
     const trimmed = (value ?? "").trim();
@@ -400,6 +413,10 @@ export function SparePartsPage() {
             </table>
           </div>
         </div>
+      </div>
+
+      <div className="card" style={{ marginTop: 14 }}>
+        <CompanyFolderManager companySuggestions={companySuggestions} />
       </div>
 
       <Modal

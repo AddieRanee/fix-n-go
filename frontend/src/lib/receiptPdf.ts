@@ -63,7 +63,7 @@ export function createReceiptPdfBlob(data: ReceiptPdfData, options?: ReceiptPdfO
 
   doc.setFont("helvetica", "bold");
   doc.setFontSize(20);
-  doc.text("FIX & GO", marginX, cursorY);
+  doc.text("FIX & GO GARAGE", marginX, cursorY);
 
   cursorY += 14;
   doc.setFont("helvetica", "normal");
