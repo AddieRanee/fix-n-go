@@ -15,6 +15,11 @@ type SaleItem = {
   sale_date: string;
 };
 
+function toFiniteNumber(value: unknown) {
+  const next = typeof value === "string" ? Number(value) : Number(value);
+  return Number.isFinite(next) ? next : 0;
+}
+
 export function SalesPage() {
   const [sales, setSales] = useState<SaleItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -39,18 +44,26 @@ export function SalesPage() {
   if (loading) return <div className="container"><div className="muted">Loading sales...</div></div>;
   if (error) return <div className="container"><div className="muted error">{error}</div></div>;
 
-  const totalSales = sales.reduce((sum, sale) => sum + sale.total, 0);
+  const totalSales = sales.reduce((sum, sale) => {
+    const lineTotal =
+      toFiniteNumber((sale as Partial<SaleItem>).total) ||
+      toFiniteNumber((sale as Partial<SaleItem>).price) *
+        toFiniteNumber((sale as Partial<SaleItem>).quantity);
+    return sum + lineTotal;
+  }, 0);
 
   return (
     <div className="container">
-      <div className="card">
-        <div className="cardHeader">
-          <h1 className="title">Sales Report</h1>
-          <span className="muted">Recent sales transactions</span>
-          <div className="spacer" />
-          <div style={{ textAlign: 'right' }}>
-            <div className="muted small">Total Sales</div>
-            <div style={{ fontWeight: 700, fontSize: 24 }}>{formatMYR(totalSales)}</div>
+      <div className="card salesCard">
+        <div className="cardHeader salesHeader">
+          <div className="salesHeaderCopy">
+            <h1 className="title" style={{ marginBottom: 4 }}>Sales Report</h1>
+            <span className="muted">Recent sales transactions</span>
+          </div>
+          <div className="salesHero">
+            <div className="salesHeroLabel muted small">Total Sales</div>
+            <div className="salesHeroValue">{formatMYR(totalSales)}</div>
+            <div className="salesHeroHint">Live summary of all recorded sales</div>
           </div>
         </div>
         <div className="cardBody">
@@ -69,12 +82,12 @@ export function SalesPage() {
               <tbody>
                 {sales.map((sale) => (
                   <tr key={sale.id}>
-                    <td>{new Date(sale.sale_date).toLocaleDateString('en-GB')}</td>
+                    <td className="salesCellLeft">{new Date(sale.sale_date).toLocaleDateString('en-GB')}</td>
                     <td>{sale.customer_name || 'Walk-in'}</td>
-                    <td>{sale.item_code} - {sale.item_name}</td>
-                    <td>{sale.quantity}</td>
-                    <td>{formatMYR(sale.price)}</td>
-                    <td style={{ fontWeight: 600 }}>{formatMYR(sale.total)}</td>
+                    <td className="salesCellLeft">{sale.item_code} - {sale.item_name}</td>
+                    <td className="salesCellCenter salesQty">{toFiniteNumber(sale.quantity)}</td>
+                    <td className="salesCellCenter salesMoney">{formatMYR(toFiniteNumber(sale.price))}</td>
+                    <td className="salesCellCenter salesMoney salesLineTotal">{formatMYR(toFiniteNumber(sale.total))}</td>
                   </tr>
                 ))}
                 {sales.length === 0 && (
