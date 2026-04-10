@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { requireSupabase } from '../lib/supabase';
 import { formatMYR } from '../lib/money';
-import { api } from '../lib/api';
 import { getApiErrorMessage } from '../lib/errors';
 
 type SaleItem = {
@@ -20,20 +19,141 @@ function toFiniteNumber(value: unknown) {
   return Number.isFinite(next) ? next : 0;
 }
 
+function normalizeText(value?: string | null) {
+  return (value ?? "").trim();
+}
+
 export function SalesPage() {
   const [sales, setSales] = useState<SaleItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    loadSales();
+    void loadSales();
   }, []);
 
   async function loadSales() {
     setLoading(true);
+    setError(null);
     try {
-      const res = await api.get('/sales');
-      setSales(res.data.sales || []);
+      const supabase = requireSupabase();
+
+      const [receiptsRes, linesRes] = await Promise.all([
+        supabase
+          .from("receipts")
+          .select("id,number_plate,staff_name,created_at")
+          .order("created_at", { ascending: false }),
+        supabase
+          .from("receipt_lines")
+          .select(
+            "id,receipt_id,line_type,inventory_item_code,spare_part_id,description,quantity,unit_price,created_at"
+          )
+          .order("created_at", { ascending: false })
+      ]);
+
+      if (receiptsRes.error) throw receiptsRes.error;
+      if (linesRes.error) throw linesRes.error;
+
+      const receipts = receiptsRes.data ?? [];
+      const lines = linesRes.data ?? [];
+
+      const receiptMap = new Map<
+        string,
+        { number_plate: string; staff_name: string; created_at: string }
+      >();
+      for (const receipt of receipts as any[]) {
+        receiptMap.set(String(receipt.id), {
+          number_plate: normalizeText(receipt.number_plate),
+          staff_name: normalizeText(receipt.staff_name),
+          created_at: String(receipt.created_at ?? new Date().toISOString())
+        });
+      }
+
+      const sparePartIds = Array.from(
+        new Set(
+          (lines as any[])
+            .filter((line) => line.line_type === "spare_part" && line.spare_part_id)
+            .map((line) => String(line.spare_part_id).trim())
+            .filter(Boolean)
+        )
+      );
+      const inventoryCodes = Array.from(
+        new Set(
+          (lines as any[])
+            .filter((line) => line.line_type === "inventory" && line.inventory_item_code)
+            .map((line) => String(line.inventory_item_code).trim())
+            .filter(Boolean)
+        )
+      );
+
+      const sparePartMap = new Map<string, { item_code: string | null; item_name: string | null }>();
+      const inventoryMap = new Map<string, { item_code: string | null; item_name: string | null }>();
+
+      if (sparePartIds.length) {
+        const { data: spRows, error: spErr } = await supabase
+          .from("spare_parts")
+          .select("id,item_code,item_name")
+          .in("id", sparePartIds);
+        if (spErr) throw spErr;
+        for (const row of spRows ?? []) {
+          sparePartMap.set(String((row as any).id), {
+            item_code: (row as any).item_code ?? null,
+            item_name: (row as any).item_name ?? null
+          });
+        }
+      }
+
+      if (inventoryCodes.length) {
+        const { data: invRows, error: invErr } = await supabase
+          .from("inventory")
+          .select("item_code,item_name")
+          .in("item_code", inventoryCodes);
+        if (invErr) throw invErr;
+        for (const row of invRows ?? []) {
+          inventoryMap.set(normalizeText((row as any).item_code), {
+            item_code: (row as any).item_code ?? null,
+            item_name: (row as any).item_name ?? null
+          });
+        }
+      }
+
+      const nextSales: SaleItem[] = (lines as any[]).map((line) => {
+        const receipt = receiptMap.get(String(line.receipt_id));
+        const quantity = toFiniteNumber(line.quantity ?? 1);
+        const price = toFiniteNumber(line.unit_price ?? 0);
+        const lineDate = receipt?.created_at ?? String(line.created_at ?? new Date().toISOString());
+
+        let itemCode = "";
+        let itemName = "";
+
+        if (line.line_type === "inventory") {
+          const code = normalizeText(line.inventory_item_code);
+          const resolved = code ? inventoryMap.get(code) : null;
+          itemCode = resolved?.item_code ?? code;
+          itemName = resolved?.item_name ?? normalizeText(line.description) ?? code;
+        } else if (line.line_type === "spare_part") {
+          const resolved = line.spare_part_id ? sparePartMap.get(String(line.spare_part_id)) : null;
+          itemCode = resolved?.item_code ?? normalizeText(line.description);
+          itemName = resolved?.item_name ?? normalizeText(line.description);
+        } else {
+          itemCode = normalizeText(line.description);
+          itemName = normalizeText(line.description);
+        }
+
+        return {
+          id: String(line.id),
+          item_code: itemCode || "Blank",
+          item_name: itemName || "Blank",
+          price,
+          quantity,
+          total: price * quantity,
+          customer_name: receipt?.number_plate || receipt?.staff_name || "Walk-in",
+          sale_date: lineDate
+        };
+      });
+
+      nextSales.sort((a, b) => b.sale_date.localeCompare(a.sale_date));
+      setSales(nextSales);
     } catch (err) {
       setError(getApiErrorMessage(err as Error, 'Failed to load sales'));
     } finally {
