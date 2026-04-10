@@ -147,8 +147,9 @@ export function salesRouter(ctx: Ctx) {
       sales.sort((a, b) => b.sale_date.localeCompare(a.sale_date));
       return res.json({ sales });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Internal server error";
       console.error("Unexpected error in /sales:", err);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: message });
     }
   });
 
@@ -193,8 +194,9 @@ export function salesRouter(ctx: Ctx) {
 
       return res.json({ totalRevenue: total, totalCost, grossProfit: total - totalCost });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Internal server error";
       console.error("Unexpected error in /total:", err);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: message });
     }
   });
 
@@ -270,8 +272,9 @@ export function salesRouter(ctx: Ctx) {
 
       return res.json({ receipts: receiptsWithTotals });
     } catch (err) {
+      const message = err instanceof Error ? err.message : "Internal server error";
       console.error("Unexpected error in /receipts:", err);
-      return res.status(500).json({ error: "Internal server error" });
+      return res.status(500).json({ error: message });
     }
   });
 

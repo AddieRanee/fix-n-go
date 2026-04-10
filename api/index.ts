@@ -20,5 +20,13 @@ try {
 }
 
 export default function handler(req: IncomingMessage, res: ServerResponse) {
-  return app(req, res);
+  try {
+    return app(req, res);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : "Unknown API error";
+    console.error("Unhandled API error:", err);
+    res.statusCode = 500;
+    res.setHeader("content-type", "application/json");
+    res.end(JSON.stringify({ error: message }));
+  }
 }
