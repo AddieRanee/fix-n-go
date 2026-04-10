@@ -77,7 +77,6 @@ This repo is set up for a single Vercel project that serves the React app and th
 3. Keep the default build command, or set it to `npm run build`.
 4. Use `frontend/dist` as the output directory.
 5. Add these environment variables in Vercel:
-   - `JWT_SECRET`
    - `SUPABASE_URL`
    - `SUPABASE_SERVICE_ROLE_KEY`
    - `VITE_SUPABASE_URL`

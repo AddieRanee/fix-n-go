@@ -2,7 +2,6 @@ import { z } from "zod";
 
 const EnvSchema = z.object({
   PORT: z.coerce.number().int().positive().default(4000),
-  JWT_SECRET: z.string().min(16),
   CORS_ORIGIN: z.string().min(1).default("*"),
   SUPABASE_URL: z.string().url(),
   SUPABASE_SERVICE_ROLE_KEY: z.string().min(20)
